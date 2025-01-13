@@ -1,0 +1,96 @@
+(* Types *)
+type pkey.
+type skey.
+type key.
+
+(* Channels *)
+free c: channel.              (* Public channel *)
+
+(* Cryptographic Functions *)
+fun pk(skey): pkey.           (* Public key generation *)
+fun sign(bitstring, skey): bitstring.     (* Digital signature *)
+fun aenc(bitstring, pkey): bitstring.     (* Asymmetric encryption *)
+fun kdf(bitstring): key.      (* Key derivation *)
+
+(* Equations *)
+reduc forall m: bitstring, k: skey; 
+    checksign(sign(m, k), pk(k)) = m.
+reduc forall m: bitstring, k: skey; 
+    adec(aenc(m, pk(k)), k) = m.
+
+(* Security Events *)
+event AliceBegins(pkey, bitstring).     (* Alice starts with (Bob's pubkey, nonce) *)
+event AliceEnds(pkey, key).             (* Alice ends with (Bob's pubkey, session key) *)
+event BobBegins(pkey, bitstring).       (* Bob starts with (Alice's pubkey, nonce) *)
+event BobEnds(pkey, key).               (* Bob ends with (Alice's pubkey, session key) *)
+event KeyGenerated(key).                (* A session key is generated *)
+
+(* Security Queries *)
+(* Authentication - if Alice ends, Bob must have started *)
+query pk_b: pkey, k: key, n: bitstring; 
+    event(AliceEnds(pk_b, k)) ==> event(AliceBegins(pk_b, n)).
+
+(* Authentication - if Bob ends, Alice must have started *)
+query pk_a: pkey, k: key, n: bitstring; 
+    event(BobEnds(pk_a, k)) ==> event(BobBegins(pk_a, n)).
+
+(* Secrecy of generated keys *)
+query k: key; 
+    event(KeyGenerated(k)) ==> attacker(k).
+
+(* Alice Process *)
+let Alice(sk_a: skey, pk_b: pkey) =
+    (* Generate nonce *)
+    new Na: bitstring;
+    event AliceBegins(pk_b, Na);
+    
+    (* Create and send message *)
+    let m1 = sign((Na, pk(sk_a)), sk_a) in
+    out(c, (pk(sk_a), aenc(m1, pk_b)));
+    
+    (* Receive and verify response *)
+    in(c, response: bitstring);
+    let (Nb: bitstring, sig_b: bitstring) = adec(response, sk_a) in
+    let (received_nb: bitstring, received_pkb: pkey) = checksign(sig_b, pk_b) in
+    if received_pkb = pk_b then
+    (
+        let session_key = kdf((Na, Nb)) in
+        event KeyGenerated(session_key);
+        event AliceEnds(pk_b, session_key)
+    ).
+
+(* Bob Process *)
+let Bob(sk_b: skey) =
+    (* Receive message *)
+    in(c, (pk_a: pkey, encrypted_na: bitstring));
+    let signed_na = adec(encrypted_na, sk_b) in
+    let (Na: bitstring, received_pka: pkey) = checksign(signed_na, pk_a) in
+    
+    event BobBegins(pk_a, Na);
+    
+    if received_pka = pk_a then
+    (
+        (* Generate nonce and session key *)
+        new Nb: bitstring;
+        let session_key = kdf((Na, Nb)) in
+        
+        (* Create and send response *)
+        let sig_b = sign((Nb, pk(sk_b)), sk_b) in
+        out(c, aenc((Nb, sig_b), pk_a));
+        
+        event KeyGenerated(session_key);
+        event BobEnds(pk_a, session_key)
+    ).
+
+(* Main Process *)
+process
+    (* Generate long-term keys *)
+    new sk_a: skey; 
+    new sk_b: skey;
+    
+    (* Publish public keys *)
+    out(c, pk(sk_a));
+    out(c, pk(sk_b));
+    
+    (* Run protocol *)
+    (!Alice(sk_a, pk(sk_b)) | !Bob(sk_b))
