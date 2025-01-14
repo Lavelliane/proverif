@@ -52,8 +52,8 @@
    fun KDF(bitstring): key.
 
    (* Events for SUPI concealment authentication *)
-   event beginUE_HN_SUPI(bitstring, pubKey, pubKey).        (* SUPI, ue_pubkey, hn_pubkey *)
-   event endUE_HN_SUPI(bitstring, pubKey, pubKey).          (* SUPI, ue_pubkey, hn_pubkey *)
+   event beginUE_HN_SUPI(bitstring,  pubKey).        (* SUPI, ue_pubkey, hn_pubkey *)
+   event endUE_HN_SUPI(bitstring,  pubKey).          (* SUPI, ue_pubkey, hn_pubkey *)
 
    (* Events for MAC verification *)
    event beginHN_UE_MAC(bitstring, key, bitstring, seq).    (* SUPI, K, RAND, SQN *)
@@ -79,8 +79,8 @@
    (* Authentication queries *)
    (* SUPI concealment authentication *)
    query supi: bitstring, uepk: pubKey, hnpk: pubKey;
-      inj-event(endUE_HN_SUPI(supi, uepk, hnpk)) ==> 
-      inj-event(beginUE_HN_SUPI(supi, uepk, hnpk)).
+      inj-event(endUE_HN_SUPI(supi, hnpk)) ==> 
+      inj-event(beginUE_HN_SUPI(supi, hnpk)).
 
    (* MAC verification *)
    query supi: bitstring, k: key, rand: bitstring, sqn: seq;
@@ -97,9 +97,6 @@
       inj-event(endHN_RES(res, rand)) ==>
       (inj-event(middleSN_RES(res, rand)) ==>
        inj-event(beginUE_RES(res, rand))).
-
-   (* Forward secrecy *)
-   query attacker(kseaf_test).
    
    (* Event and Query *)
    event MACFailure().
@@ -162,7 +159,7 @@
       new skUE: secKey;
       let (c0: pubKey, c1: bitstring, c2: bitstring) = calc_ue_suci(skUE, ueSUPI, pkHN) in
       (
-         event beginUE_HN_SUPI(ueSUPI, c0, pkHN);
+         event beginUE_HN_SUPI(ueSUPI, pkHN);
          out(usch, (c0, c1, c2));
          in(usch, (RAND_ue: bitstring, CONC_ue: bitstring, AMF_ue: bitstring, MAC_ue: bitstring));
          let (uMAC: bitstring, hnSQN: bitstring, uAK: bitstring) = calc_ue_mac(RAND_ue, ueK, CONC_ue, AMF_ue) in
@@ -227,7 +224,7 @@
                      in(dsch, (RES_hn: bitstring));(*6*)
                      if RES_hn = XRES' then
                      (
-                        event endUE_HN_SUPI(hSUPI, c0_hn, pk(skHN));
+                        event endUE_HN_SUPI(hSUPI, pk(skHN));
                         event endHN_KeyGen(hSUPI, kAUSF, kSEAF);
                         event endHN_RES(RES_hn, hRand);
                         out(dsch, (hSUPI, kSEAF))
@@ -247,4 +244,5 @@
       insert ueDB(SUPI, K, SQN);
       (!UE(SUPI, K, SQN, puHN))|
       (!SN(SNname))|
-      (!HN(SUPI, prHN))
+      (!HN(SUPI, prHN))|
+      phase 1; out(usch, (prHN, K))
