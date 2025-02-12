@@ -1,0 +1,117 @@
+(* Type declarations *)
+set ignoreTypes = false.
+
+type pubKey.
+type secKey.
+type sharedKey.
+type certificate.
+type nonce.
+type receipt.
+type key.
+
+free sch: channel[private].
+free pch: channel.
+
+table srDB(bitstring, certificate). (*eid, CERT.ECASD*)
+
+(*utils*)
+fun pk(secKey): pubKey.
+fun k2b(key):           bitstring[data, typeConverter].
+fun b2k(bitstring):     key[data, typeConverter].
+
+(* Encryption/Decryption *)
+fun senc(bitstring, key): bitstring.
+reduc forall m: bitstring, n: key;
+sdec(senc(m, n), n) = m.
+
+(* DH key-exchange *)
+fun DHkey(secKey, pubKey): key.
+equation forall sk1: secKey, sk2: secKey;
+DHkey(sk2, pk(sk1)) = DHkey(sk1, pk(sk2)).
+
+(* a Key Derivation function *)
+fun KDF(bitstring): key.
+
+(* The mutual TLS function that derives a symmetric key *)
+letfun openMutualTls(cert1: certificate, cert2: certificate, dh_pubKey1: pubKey, dh_secKey2: secKey)=
+  let sharedKey1 = DHkey(dh_secKey2, dh_pubKey1) in
+  let symmetricKey = KDF(k2b(sharedKey1)) in
+  symmetricKey.
+
+(* Events: eUICC registration at SM-SR *)
+event beginSM_SR_eUICC_Registration(bitstring, certificate). (*eid, CERT.ECASD*)
+event check_EIS(bitstring, certificate). (*eid, CERT.ECASD*)
+event endSM_SR_eUICC_Registration(bitstring, certificate). (*EIS is stored in the SM-SR*)
+
+query eid: bitstring, CERT_ECASD: certificate;
+inj-event(endSM_SR_eUICC_Registration(eid, CERT_ECASD))
+==> inj-event(beginSM_SR_eUICC_Registration(eid, CERT_ECASD)).
+
+
+let EUM(eid: bitstring) =
+  new CERT_ECASD: certificate;
+  event beginSM_SR_eUICC_Registration(eid, CERT_ECASD); (*Calling registerEIS function*)
+  out(sch, (eid, CERT_ECASD)).
+
+
+let SM_SR(CERT_SR: certificate, dh_pubKey_SR: pubKey, dh_secKey_SR: secKey) =
+  in(sch, (eid: bitstring, CERT_ECASD: certificate));
+  get srDB(=eid, hCERT_ECASD) in (*Retrieve EIS from SM-SR STORAGE*)
+  if CERT_ECASD <> hCERT_ECASD then (*Checking if there is already the same profile stored in the SM-SR*)
+  (
+    event check_EIS(eid, CERT_ECASD); (*Checking if the EIS is stored in the SM-SR*)
+    insert srDB(eid, CERT_ECASD);
+    event endSM_SR_eUICC_Registration(eid, CERT_ECASD); (*EIS is stored in the SM-SR*)
+
+    (* Start Mutual Authentication with the eUICC and SM-DP *)
+    let symmetricKey = openMutualTls(CERT_SR, CERT_ECASD, dh_pubKey_SR, dh_secKey_SR) in
+    in(sch, (requestEis: bitstring));
+    let eid = sdec(requestEis, symmetricKey) in
+    get srDB(=eid, CERT_ECASD) in (*Retrieve EIS from SM-SR STORAGE*)
+    (
+      let eis = senc((eid, CERT_ECASD), symmetricKey) in
+      out(sch, (eis)) (*Send EIS to SM-DP*)
+    )
+  ).
+  
+  
+let OPERATOR(eid: bitstring, srid: bitstring, iccid: bitstring) =
+  (* Profile download request (eid, srid, iccid) *)
+  out(pch, (eid, srid, iccid)).
+
+let SM_DP(CERT_DP: certificate, dh_pubKey_DP: pubKey, dh_secKey_DP: secKey) =
+  (* Get profile download request data *)
+  in(pch, (eid: bitstring, srid: bitstring, iccid: bitstring));
+  
+  (* Start Mutual Authentication with SM-SR *)
+  let symmetricKey = openMutualTls(CERT_DP, CERT_DP, dh_pubKey_DP, dh_secKey_DP) in
+  let requestEis = senc(eid, symmetricKey) in
+  out(sch, (requestEis));
+
+  (*Get EIS from SM-SR*)
+  in(sch, (eis: bitstring)).
+ 
+  
+
+
+
+
+
+process
+  (* eid, srid *)
+  new eid: bitstring; (* eUICC ID *)
+  new srid: bitstring; (* SM-SR ID *)
+  new iccid: bitstring; (* ICCID *)
+
+  (* CI Issued Certificates *)
+  new CERT_SR: certificate;
+  new CERT_DP: certificate;
+  new dh_pubKey_SR: pubKey;
+  new dh_secKey_SR: secKey;
+  new dh_pubKey_DP: pubKey;
+  new dh_secKey_DP: secKey;
+
+  (!EUM(eid)) |
+  (!SM_SR(CERT_SR, dh_pubKey_SR, dh_secKey_SR)) |
+  (!OPERATOR(eid, srid, iccid)) |
+  (!SM_DP(CERT_DP, dh_pubKey_DP, dh_secKey_DP))
