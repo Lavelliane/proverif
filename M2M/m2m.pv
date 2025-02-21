@@ -10,16 +10,21 @@ type receipt.
 type key.
 type label.
 
-free sch: channel[private].
+free sch: channel[private]. (*PSK TLS and TLS*)
 free pch: channel.
+
+free pk_CI: pubKey.
 
 table srDB(bitstring, certificate). (*eid, CERT.ECASD*)
 
 (*utils*)
 fun pk(secKey): pubKey.
 fun k2b(key):           bitstring[data, typeConverter].
+fun pk2b(pubKey):      bitstring[data, typeConverter].
+fun sk2b(secKey):      bitstring[data, typeConverter].
 fun b2k(bitstring):     key[data, typeConverter].
 fun l2b(label):        bitstring[data, typeConverter].
+fun c2b(certificate):  bitstring[data, typeConverter].
 
 (* Encryption/Decryption *)
 fun senc(bitstring, key): bitstring.
@@ -31,8 +36,17 @@ fun DHkey(secKey, pubKey): key.
 equation forall sk1: secKey, sk2: secKey;
 DHkey(sk2, pk(sk1)) = DHkey(sk1, pk(sk2)).
 
+(* Digital Signature *)
+fun sign(bitstring, pubKey): bitstring.
+
+reduc forall m:bitstring, pk:pubKey; getmess(sign(m, pk)) = m.
+reduc forall m:bitstring, pk:pubKey; checksign(sign(m, pk), pk) = m.
+
 (* a Key Derivation function *)
 fun KDF(bitstring): key.
+fun extractPK(certificate): pubKey.
+fun generate_random_challenge(bitstring): bitstring.
+
 letfun verify(certificate: certificate)=
   true.
 
@@ -47,8 +61,14 @@ query eid: bitstring, CERT_ECASD: certificate;
 inj-event(endSM_SR_eUICC_Registration(eid, CERT_ECASD))
 ==> inj-event(beginSM_SR_eUICC_Registration(eid, CERT_ECASD)).
 
-query attacker 
-
+let EUICC(eid: bitstring, iccid: bitstring, CERT_ECASD: certificate)=
+  in(sch, (CERT_DP: certificate));
+  if checksign(c2b(CERT_DP), pk_CI) = c2b(CERT_DP) then
+  (
+    let pk_DP = extractPK(CERT_DP) in
+    let challenge = generate_random_challenge(pk2b(pk_DP)) in
+    out(sch, (challenge)) 
+  ).
 (* ================ EUM ================ *)
 
 let EUM(eid: bitstring) =
@@ -67,30 +87,12 @@ let SM_SR(CERT_SR: certificate) =
   (
     event check_EIS(eid, CERT_ECASD); (*Checking if the EIS is stored in the SM-SR*)
     insert srDB(eid, CERT_ECASD);
-    event endSM_SR_eUICC_Registration(eid, CERT_ECASD); (*EIS is stored in the SM-SR*)
+    event endSM_SR_eUICC_Registration(eid, CERT_ECASD) (*EIS is stored in the SM-SR*)
 
-    (* Start Mutual Authentication with the eUICC and SM-DP *)
-    in(sch, (l2b(ClientHello), CERT_DP: certificate));
-    if verify(CERT_DP) then
-    (
-      out(sch, (l2b(ServerHello), CERT_SR, dh_pubKey_SR));
-      in(sch, (l2b(ClientKeyExchange), dh_pubKey_DP: pubKey));
-      let sharedKey = DHkey(dh_secKey_SR, dh_pubKey_DP) in
-      let symmetricKey = KDF(k2b(sharedKey)) in
-      in(sch, (l2b(Finished), handshakeMsg: bitstring));
-      let decHandshake = sdec(handshakeMsg, symmetricKey) in
-      if decHandshake = l2b(Finished) then
-      (
-        (* Securely receive request from SM-DP *)
-        in(sch, (requestEis: bitstring));
-        let eid_dec = sdec(requestEis, symmetricKey) in
-        (* Retrieve EIS from storage *)
-        get srDB(=eid_dec, hCERT_ECASD) in 
-        let eis = senc((eid_dec, hCERT_ECASD), symmetricKey) in
-        (* Send encrypted EIS to SM-DP *)
-        out(sch, (eis))
-      )
-    )
+    (* Start Key Establishment with the eUICC and SM-DP *)
+
+
+    
   ).
 
 (* ================ OPERATOR ================ *)
@@ -102,27 +104,14 @@ let OPERATOR(eid: bitstring, srid: bitstring, iccid: bitstring) =
 (* ================ SM-DP ================ *)
 
 
-let SM_DP(CERT_DP: certificate)=
+let SM_DP(dpid: bitstring)=
   new dh_pubKey_DP: pubKey;
   new dh_secKey_DP: secKey;
   (* Get profile download request data *)
   in(pch, (eid: bitstring, srid: bitstring, iccid: bitstring));
-  
-  (* Start Mutual Authentication with SM-SR *)
-  out(sch, (l2b(ClientHello), CERT_DP));
-  in(sch, (l2b(ServerHello), CERT_SR: certificate, dh_pubKey_SR: pubKey));
-  if verify(CERT_SR) then
-  (
-    out(sch, (l2b(ClientKeyExchange), dh_pubKey_DP));
-    let sharedKey = DHkey(dh_secKey_DP, dh_pubKey_SR) in
-    let symmetricKey = KDF(k2b(sharedKey)) in
-    out(sch, (l2b(Finished), senc(l2b(Finished), symmetricKey)));
-    let requestEis = senc(eid, symmetricKey) in
-    out(sch, (requestEis));
-    in(sch, (eis: bitstring))
-  ).
- 
-  
+  let CERT_DP = sign(dpid, pk_CI) in
+  out(sch, (CERT_DP)).
+
 
 
 (* ================ MAIN PROCESS ================ *)
@@ -132,13 +121,14 @@ process
   new eid: bitstring; (* eUICC ID *)
   new srid: bitstring; (* SM-SR ID *)
   new iccid: bitstring; (* ICCID *)
+  new dpid: bitstring; (* DPID *)
 
   (* CI Issued Certificates *)
   new CERT_SR: certificate;
-  new CERT_DP: certificate;
-
+  new CERT_ECASD: certificate;
 
   (!EUM(eid)) |
   (!SM_SR(CERT_SR)) |
   (!OPERATOR(eid, srid, iccid)) |
-  (!SM_DP(CERT_DP))
+  (!SM_DP(dpid)) |
+  (!EUICC(eid, iccid, CERT_ECASD))
