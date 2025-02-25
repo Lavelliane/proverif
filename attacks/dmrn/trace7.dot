@@ -1,0 +1,88 @@
+digraph {
+graph [ordering = out]
+edge [arrowhead = none, penwidth = 1.6, fontsize = 30]
+node [shape = point, width = 0, height = 0, fontsize = 30]
+Trace [label = <A trace has been found.<br/>
+>, shape = plaintext]
+P0__0 [label = "Honest Process", shape = plaintext]
+P__0 [label = "Attacker", shape = plaintext]
+Trace -> P0__0 [label = "", style = invisible, weight = 100]{rank = same; P0__0 P__0}
+P0__0 -> P0__1 [label = <>, weight = 100]
+P0__1 -> P0__2 [label = <>, weight = 100]
+P0__2 [shape = plaintext, label = <<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4"> <TR><TD><FONT COLOR="darkgreen">{1}</FONT><FONT COLOR="blue">new </FONT>idHN_3</TD></TR></TABLE>>]
+P0__2 -> P0__3 [label = <>, weight = 100]
+P0__3 -> P0__4 [label = <>, weight = 100]
+P__0 -> P__1 [label = <>, weight = 100]
+{rank = same; P__1 P0__4}
+P0__4 -> P0__5 [label = <>, weight = 100]
+P__1 -> P__2 [label = <>, weight = 100]
+{rank = same; P__2 P0__5}
+P0__5 -> P__2 [label = <~M = pk(skHN)>, arrowhead = normal]
+P0__5 -> P0__6 [label = <>, weight = 100]
+P__2 -> P__3 [label = <>, weight = 100]
+{rank = same; P__3 P0__6}
+/*RPar */
+P0__6 -> P0_3__6 [label = <>]
+P0__6 -> P0_2__6 [label = <>]
+P0__6 -> P0_1__6 [label = <>]
+P0__6 -> P0_0__6 [label = <>]
+P0__6 [label = "", fixedsize = false, width = 0, height = 0, shape = none]
+{rank = same; P0_0__6 P0_1__6 P0_2__6 P0_3__6}
+P0_1__6 [label = "!", shape = ellipse]
+P0_1_0__6 [label = "", fixedsize = false, width = 0, height = 0, shape = none]
+P0_1__6 -> P0_1_0__6 [label = <>, weight = 100]
+P0_1_0__6 -> P0_1_0__7 [label = <>, weight = 100]
+P0_1_0__7 [shape = plaintext, label = <<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4"> <TR><TD>Beginning of process <FONT COLOR="darkgreen">HN</FONT></TD></TR></TABLE>>]
+P0_1_0__7 -> P0_1_0__8 [label = <>, weight = 100]
+P0_2__6 [label = "!", shape = ellipse]
+P0_2_0__6 [label = "", fixedsize = false, width = 0, height = 0, shape = none]
+P0_2__6 -> P0_2_0__6 [label = <>, weight = 100]
+P0_2_0__6 -> P0_2_0__7 [label = <>, weight = 100]
+P0_2_0__7 [shape = plaintext, label = <<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4"> <TR><TD>Beginning of process <FONT COLOR="darkgreen">SN</FONT></TD></TR></TABLE>>]
+P0_2_0__7 -> P0_2_0__8 [label = <>, weight = 100]
+P0_3__6 [label = "!", shape = ellipse]
+P0_2_0__8 -> P0_2_0__9 [label = <>, weight = 100]
+P0_1_0__8 -> P0_1_0__9 [label = <>, weight = 100]
+P0_0__6 -> P0_0__7 [label = <>, weight = 100]
+P__3 -> P__4 [label = <>, weight = 100]
+{rank = same; P__4 P0_0__7 P0_1_0__9 P0_2_0__9}
+P0_2_0__9 -> P0_2_0__10 [label = <>, weight = 100]
+P__4 -> P__5 [label = <>, weight = 100]
+{rank = same; P__5 P0_2_0__10}
+P0_2_0__10 -> P__5 [label = <~X_1>, dir = back, arrowhead = normal]
+P0_2_0__10 -> P0_2_0__11 [label = <>, weight = 100]
+P0_1_0__9 -> P0_1_0__10 [label = <>, weight = 100]
+P0_0__7 -> P0_0__8 [label = <>, weight = 100]
+P__5 -> P__6 [label = <>, weight = 100]
+{rank = same; P__6 P0_0__8 P0_1_0__10 P0_2_0__11}
+P0_2_0__11 -> P0_2_0__12 [label = <>, weight = 100]
+P0_2_0__12 [shape = plaintext, label = <<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4"> <TR><TD><FONT COLOR="darkgreen">{37}</FONT><FONT COLOR="blue">new </FONT>rSN_2</TD></TR><TR><TD><FONT COLOR="darkgreen">{38}</FONT><FONT COLOR="blue">new </FONT>ssID_3</TD></TR><TR><TD><FONT COLOR="darkgreen">{39}</FONT><FONT COLOR="blue">event</FONT> SNSendReqHN(f1((senc((a_1,a_2,SNname),<br/>
+KEMkey(Encaps(pk(skHN),a))),KEMkey(Encaps(pk(skHN),<br/>
+a)))))</TD></TR></TABLE>>]
+P0_2_0__12 -> P0_2_0__13 [label = <>, weight = 100]
+P0_2_0__13 -> P0_2_0__14 [label = <>, weight = 100]
+P0_1_0__10 -> P0_1_0__11 [label = <>, weight = 100]
+{rank = same; P0_1_0__11 P0_2_0__14}
+P0_2_0__14 -> P0_2_0__15 [label = <>, weight = 100]
+P0_1_0__11 -> P0_1_0__12 [label = <>, weight = 100]
+{rank = same; P0_1_0__12 P0_2_0__15}
+P0_2_0__15 -> P0_1_0__12 [label = <~X_2>, arrowhead = normal]
+P0_2_0__15 -> P0_2_0__16 [label = <>, weight = 100]
+P0_1_0__12 -> P0_1_0__13 [label = <>, weight = 100]
+{rank = same; P0_1_0__13 P0_2_0__16}
+P0_1_0__13 -> P0_1_0__14 [label = <>, weight = 100]
+P0_1_0__14 [color = red, shape = plaintext, label = <<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4"> <TR><TD><FONT COLOR="darkgreen">{63}</FONT><FONT COLOR="blue">event</FONT> HNRecReqSN(f1((senc((a_1,a_2,SNname),<br/>
+KEMkey(Encaps(pk(skHN),a))),KEMkey(Encaps(pk(skHN),<br/>
+a)))))</TD></TR></TABLE>>]
+P0_1_0__14 -> P0_1_0__15 [label = <>, weight = 100]
+Abbrev [shape = plaintext, label = <<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4"><TR> <TD> Abbreviations </TD></TR><TR><TD>~X_1 = (KEMCipher(Encaps(~M,a)),senc((a_1,a_2,SNname),<br/>
+KEMkey(Encaps(~M,a))),f1((senc((a_1,a_2,SNname),<br/>
+KEMkey(Encaps(~M,a))),KEMkey(Encaps(~M,a)))),a_3)<br/>
+=<br/>
+(KEMCipher(Encaps(pk(skHN),a)),senc((a_1,a_2,<br/>
+SNname),KEMkey(Encaps(pk(skHN),a))),f1((senc((<br/>
+a_1,a_2,SNname),KEMkey(Encaps(pk(skHN),a))),KEMkey(<br/>
+Encaps(pk(skHN),a)))),a_3)</TD></TR><TR><TD>~X_2 = (ssID_3,KEMCipher(Encaps(pk(skHN),a)),senc((a_1,<br/>
+a_2,SNname),KEMkey(Encaps(pk(skHN),a))),f1((senc(<br/>
+(a_1,a_2,SNname),KEMkey(Encaps(pk(skHN),a))),KEMkey(<br/>
+Encaps(pk(skHN),a)))),SNname,rSN_2)</TD></TR></TABLE>>]Abbrev -> P__0 [style = invisible, weight =100]}

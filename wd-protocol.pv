@@ -1,123 +1,212 @@
+set traceDisplay = long.
+
 (* Types *)
-type key.
+type pubKey.
+type secKey.
 type nonce.
 type id.
 type qrcode.
-
-(* Type converters *)
-fun nonce2bits(nonce): bitstring [typeConverter].
-fun key2bits(key): bitstring [typeConverter].
-fun id2bits(id): bitstring [typeConverter].
-fun bits2qr(bitstring): qrcode [typeConverter].
-fun qr2bits(qrcode): bitstring [typeConverter].
-fun bits2id(bitstring): id [typeConverter].
-
+type label.
+type key.
 (* Channels *)
-free bluetooth: channel.    (* Bluetooth channel *)
-free oob: channel [private].  (* Visual OOB channel for QR codes *)
+free bluetooth: channel.
+free oob: channel [private].
+free uch: channel [private].
 
-(* Constants and variables *)
-free ID_w: id [private].    (* Wearable device ID *)
-free ID_m: id [private].    (* Mobile terminal ID *)
+(* Constants *)
+free ID_w: id [private].
+free ID_m: id [private].
+free kw: bitstring [private].
+free km: bitstring [private].
+const ACCEPTED: label.
+
+(* Debug Variables *)
+free debug_qr1: bitstring [private].
+free debug_bluetooth: bitstring [private].
+free debug_qr2: bitstring [private].
+free SK_test: bitstring [private].
 
 (* Functions *)
-fun E_QR(bitstring): qrcode.    (* QR code encryption *)
-reduc forall m: bitstring; D_QR(E_QR(m)) = m.  (* QR code decryption *)
+fun f1(bitstring): bitstring.     (* For MAC generation *)
+fun f2(bitstring): bitstring.     (* For response/session key *)
+fun f3(bitstring): bitstring.     (* For other keys *)
+fun f4(bitstring): bitstring.     (* For other keys *)
+fun h(bitstring): bitstring.    (* h hash function *)
+fun pk(secKey): pubKey.           (* Public key from secret key *)
+fun concat(bitstring, bitstring): bitstring.
+fun rot(bitstring): bitstring.
+fun disjunction(bitstring, bitstring): bitstring.
+fun conjunction(bitstring, bitstring): bitstring.
 
-fun H(bitstring): bitstring.     (* Hash function *)
-fun concat(bitstring, bitstring): bitstring.  (* Concatenation *)
+(* Type conversion - all output bitstring for uniform handling *)
+fun id2bits(id): bitstring [data, typeConverter].
+fun nonce2bits(nonce): bitstring [data, typeConverter].
+fun bits2id(bitstring): id [data, typeConverter].
+fun qr2bits(qrcode): bitstring [data, typeConverter].
+fun label2bits(label): bitstring [data, typeConverter].
+fun b2k(bitstring): key [data, typeConverter].
 
-(* XOR operation *)
+(* QR code operations *)
+fun qrenc(bitstring, secKey): qrcode.
+reduc forall m: bitstring, k: secKey; qrdec(qrenc(m, k), k) = m.
+
+fun senc(bitstring, key): bitstring.
+reduc forall m: bitstring, n: key;
+sdec(senc(m, n), n) = m.
+
+(* XOR *)
 fun xor(bitstring, bitstring): bitstring.
-equation forall x: bitstring, y: bitstring; 
-    xor(xor(x,y), y) = x.
+equation forall m: bitstring, n: bitstring;
+    xor(xor(m,n), n) = m.
 
-(* Rotate operation *)
-fun rot(bitstring, bitstring): bitstring.
-
-(* Events for authentication verification *)
+(* Events *)
 event WDStartsSession(id, id).
 event MTStartsSession(id, id).
-event WDCompletesSession(id, id).
-event MTCompletesSession(id, id).
+event WDSendsQR1(id, id, bitstring).
+event MTReceivesQR1(id, id, bitstring).
+event MTSendsBluetooth(bitstring, bitstring, bitstring, bitstring).
+event WDReceivesBluetooth(bitstring, bitstring, bitstring, bitstring).
+event WDSendsQR2(id, id, bitstring).
+event MTReceivesQR2(id, id, bitstring).
+event WDCompletesSession(id, id, bitstring).
+event MTCompletesSession(bitstring).
+event MTAuthenticatesWD(id, id, bitstring).
+event MTGeneratesSessionKey(bitstring).
+event WDGeneratesSessionKey(bitstring).
 
-(* Security Properties *)
-query id1:id, id2:id; 
-    inj-event(WDCompletesSession(id1,id2)) ==> 
-    inj-event(MTStartsSession(id2,id1)).
+(*FAIL EVENTS*)
+event M1VerificationFailed().
+event CVerificationFailed().
 
-query id1:id, id2:id; 
-    inj-event(MTCompletesSession(id1,id2)) ==> 
-    inj-event(WDStartsSession(id2,id1)).
-
+(* Debug Queries *)
+query attacker(kw).
+query attacker(km).
 query attacker(ID_w).
 query attacker(ID_m).
+query attacker(SK_test).
 
+query A: bitstring, B: bitstring, C: bitstring, hashedBtAddress: bitstring;
+    inj-event(WDReceivesBluetooth(A, B, C, hashedBtAddress)) ==>
+    inj-event(MTSendsBluetooth(A, B, C, hashedBtAddress)).
+
+query id1: id, id2: id, msg: bitstring;
+    inj-event(MTReceivesQR1(id1, id2, msg)) ==> inj-event(WDSendsQR1(id2, id1, msg)).
+
+query id1: id, id2: id, msg: bitstring;
+    inj-event(MTReceivesQR2(id1, id2, msg)) ==> inj-event(WDSendsQR2(id2, id1, msg)).
+
+query id1: id, id2: id, msg: bitstring;
+    inj-event(MTCompletesSession(msg)) ==> inj-event(WDCompletesSession(id1, id2, msg)).
+
+query id1: id, id2: id, msg: bitstring;
+    inj-event(MTAuthenticatesWD(id2, id1, msg)) ==> (inj-event(MTReceivesQR2(id1, id2, msg)) ==> inj-event(WDSendsQR2(id1, id2, msg))).
 
 (* Wearable Device Process *)
-let WD(id_w: id, k_w: key) =
+let WD(id_w: id, k_w: bitstring, btAddr: bitstring, k_qr: secKey) =
     event WDStartsSession(id_w, ID_m);
-    
-    (* Generate random numbers *)
     new r1: nonce;
     new r2: nonce;
     
-    let qr1 = E_QR(concat(key2bits(k_w), 
-                         concat(nonce2bits(r1), nonce2bits(r2)))) in
+    let r1_bits = nonce2bits(r1) in
+    let r2_bits = nonce2bits(r2) in
+    
+    (* Include device IDs in the QR code to bind it to this specific pair *)
+    let qr1 = qrenc((k_w, r1_bits, r2_bits, id2bits(id_w), id2bits(ID_m)), k_qr) in
+    event WDSendsQR1(id_w, ID_m, (k_w, r1_bits, r2_bits));
+    (* User physically shows QR code to MT *)
     out(oob, qr1);
     
-    in(bluetooth, (a:bitstring, b:bitstring, c:bitstring));
+    in(bluetooth, (A: bitstring, B: bitstring, C: bitstring, hashedBtAddress: bitstring));
+    if hashedBtAddress = h(btAddr) then
+    (
+        event WDReceivesBluetooth(A, B, C, hashedBtAddress);
+        let k_w' = rot(xor(k_w, (concat(r1_bits, k_w)))) in 
+        let k_m' = rot(xor(km, (concat(r2_bits, km)))) in 
+        let C' = concat(xor(k_w, k_m'), xor(km, k_w')) in
+
+        if C = C' then
+        (
+            let S = disjunction(k_w, km) in
+            let r = xor(r1_bits, r2_bits) in
+            let M1 = h((id_w, S, r, ID_m)) in
+            event WDSendsQR2(id_w, ID_m, M1);
+            out(oob, qrenc((M1, ID_m), k_qr));
+            event WDCompletesSession(id_w, ID_m, M1);
+            let SK = h(M1) in
+            event WDGeneratesSessionKey(SK);
+            out(bluetooth, senc(SK_test, b2k(SK)))
+        )
+        else
+        (
+            event CVerificationFailed()
+        )
+    ).
     
-    let k_m_bits = xor(xor(a, key2bits(k_w)), nonce2bits(r1)) in
-    let id_m_bits = xor(xor(b, id2bits(id_w)), nonce2bits(r2)) in
-    let extracted_id_m = bits2id(id_m_bits) in
-    
-    let check_c = xor(key2bits(k_w), k_m_bits) in
-    if c = check_c then
-    
-    let s = concat(key2bits(k_w), k_m_bits) in
-    let r = xor(nonce2bits(r1), nonce2bits(r2)) in
-    let m1 = H(concat(id2bits(id_w),
-                     concat(s, concat(r, id_m_bits)))) in
-    
-    let qr2 = E_QR(m1) in
-    out(oob, qr2);
-    
-    event WDCompletesSession(id_w, extracted_id_m).
 
 (* Mobile Terminal Process *)
-let MT(id_m: id, k_m: key) =
+let MT(id_m: id, k_m: bitstring, btAddr: bitstring, k_qr: secKey) =
     event MTStartsSession(id_m, ID_w);
-    
-    (* Receive initial QR code *)
-    in(oob, qr1: qrcode);
-    let keys_and_nonces = D_QR(qr1) in
-    
-    let k_w_bits = keys_and_nonces in  (* simplified *)
-    let r1_bits = keys_and_nonces in   (* simplified *)
-    let r2_bits = keys_and_nonces in   (* simplified *)
-    
-    let a = xor(xor(k_w_bits, key2bits(k_m)), r1_bits) in
-    let b = xor(xor(id2bits(ID_w), id2bits(id_m)), r2_bits) in
-    let c = xor(k_w_bits, key2bits(k_m)) in
-    
-    out(bluetooth, (a,b,c));
+    in(uch, (qr1: qrcode, id_w_fromuser: id, id_m_fromuser: id));
+    event MTReceivesQR1(ID_w, id_m, (qrdec(qr1, k_qr)));
+    (* Verify that user-provided IDs match what's in the QR code *)
+    let (k_w: bitstring, r1_bits: bitstring, r2_bits: bitstring, id_w_bits: bitstring, id_m_bits: bitstring) = qrdec(qr1, k_qr) in
+    if id_w_fromuser = bits2id(id_w_bits) && id_m_fromuser = bits2id(id_m_bits) then
+    (
+        let A = xor(xor(k_m, k_w), r1_bits) in
+        let B = xor(disjunction(id2bits(id_m), id2bits(ID_w)), r2_bits) in
+        let k_w' = rot(xor(k_w, (concat(r1_bits, k_w)))) in 
+        let k_m' = rot(xor(k_m, (concat(r2_bits, k_m)))) in 
+        let C = concat(xor(k_w, k_m'), xor(k_m, k_w')) in
 
-    in(oob, qr2: qrcode);
-    let m1 = D_QR(qr2) in
-    
-    let s = concat(k_w_bits, key2bits(k_m)) in
-    let r = xor(r1_bits, r2_bits) in
-    let m1_check = H(concat(id2bits(ID_w),
-                           concat(s, concat(r, id2bits(id_m))))) in
-    
-    if m1 = m1_check then
-    event MTCompletesSession(id_m, ID_w).
+        (* OUT M1 = A,B,C*)
+        event MTSendsBluetooth(A, B, C, h(btAddr));
+        out(bluetooth, (A,B,C, h(btAddr)));
+        
+        in(oob, qr2: qrcode);
+        let (M1: bitstring) = qrdec(qr2, k_qr) in
+        event MTReceivesQR2(ID_w, id_m, M1);
 
+        let S = disjunction(k_w, k_m) in
+        let r = xor(r1_bits, r2_bits) in
+        let M1' = h((ID_w, S, r, id2bits(id_m))) in
+        if M1 = M1' then
+        (
+            event MTAuthenticatesWD(id_m, ID_w, M1);
+            let SK = h(M1) in
+            event MTGeneratesSessionKey(SK);
+            out(uch, true);
+            out(bluetooth, senc(SK_test, b2k(SK)))
+        ) 
+    )
+    else
+    (
+        event M1VerificationFailed()
+    ).
+
+let User(k_qr: secKey) =
+    (* User initiates authentication by confirming device identity *)
+    in(oob, qr1: qrcode);  (* User sees QR1 from WD *)
+    let (k_w: bitstring, r1_bits: bitstring, r2_bits: bitstring) = qrdec(qr1, k_qr) in
+    (* User physically transfers this to MT by showing the QR code *)
+    out(uch, (qr1, ID_w, ID_m));
+    
+    in(uch, result: bool);
+    if result then
+    (
+        out(uch, true)
+    )
+    else
+    (
+        out(uch, false)
+    ).
+    
 (* Main Process *)
-process 
-    new k_w: key;
-    new k_m: key;
-    (!WD(ID_w, k_w)) | 
-    (!MT(ID_m, k_m)) |
-    phase 1; out(bluetooth, (k_w, k_m))
+process
+    new btAddr: bitstring;
+    (*Assume shared QR in visual channel. Represent encrypted data in QR as {M}k_qr*)
+    new k_qr: secKey;
+    (
+        (!WD(ID_w, kw, btAddr, k_qr) | !MT(ID_m, km, btAddr, k_qr)) |
+        (phase 1; 
+         out(bluetooth, (kw, km)))
+    )
