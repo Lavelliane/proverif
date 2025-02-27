@@ -26,10 +26,6 @@ free debug_qr2: bitstring [private].
 free SK_test: bitstring [private].
 
 (* Functions *)
-fun f1(bitstring): bitstring.     (* For MAC generation *)
-fun f2(bitstring): bitstring.     (* For response/session key *)
-fun f3(bitstring): bitstring.     (* For other keys *)
-fun f4(bitstring): bitstring.     (* For other keys *)
 fun h(bitstring): bitstring.    (* h hash function *)
 fun pk(secKey): pubKey.           (* Public key from secret key *)
 fun concat(bitstring, bitstring): bitstring.
