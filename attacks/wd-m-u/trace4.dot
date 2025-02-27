@@ -1,0 +1,95 @@
+digraph {
+graph [ordering = out]
+edge [arrowhead = none, penwidth = 1.6, fontsize = 30]
+node [shape = point, width = 0, height = 0, fontsize = 30]
+Trace [label = <A trace has been<br/>
+found.<br/>
+>, shape = plaintext]
+P0__0 [label = "Honest Process", shape = plaintext]
+P__0 [label = "Attacker", shape = plaintext]
+Trace -> P0__0 [label = "", style = invisible, weight = 100]{rank = same; P0__0 P__0}
+P0__0 -> P0__1 [label = <>, weight = 100]
+P0__1 -> P0__2 [label = <>, weight = 100]
+P0__2 [shape = plaintext, label = <<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4"> <TR><TD><FONT COLOR="darkgreen">{1}</FONT><FONT COLOR="blue">new </FONT>btAddr_3</TD></TR><TR><TD><FONT COLOR="darkgreen">{2}</FONT><FONT COLOR="blue">new </FONT>k_qr_3</TD></TR></TABLE>>]
+P0__2 -> P0__3 [label = <>, weight = 100]
+/*RPar */
+P0__3 -> P0_2__3 [label = <>]
+P0__3 -> P0_1__3 [label = <>]
+P0__3 -> P0_0__3 [label = <>]
+P0__3 [label = "", fixedsize = false, width = 0, height = 0, shape = none]
+{rank = same; P0_0__3 P0_1__3 P0_2__3}
+P0_1__3 [label = "!", shape = ellipse]
+P0_1_0__3 [label = "", fixedsize = false, width = 0, height = 0, shape = none]
+P0_1__3 -> P0_1_0__3 [label = <>, weight = 100]
+P0_1_0__3 -> P0_1_0__4 [label = <>, weight = 100]
+P0_1_0__4 [shape = plaintext, label = <<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4"> <TR><TD>Beginning of process <FONT COLOR="darkgreen">MT</FONT></TD></TR><TR><TD><FONT COLOR="darkgreen">{33}</FONT><FONT COLOR="blue">let</FONT> id_m: id = ID_m</TD></TR><TR><TD><FONT COLOR="darkgreen">{37}</FONT><FONT COLOR="blue">event</FONT> MTStartsSession(ID_m,ID_w)</TD></TR></TABLE>>]
+P0_1_0__4 -> P0_1_0__5 [label = <>, weight = 100]
+P0_2__3 [label = "!", shape = ellipse]
+{rank = same; P0_2_1__3 P0_2_0__3}
+P0_2_1__3 [label = "", fixedsize = false, width = 0, height = 0, shape = none]
+P0_2__3 -> P0_2_1__3 [label = <>]
+P0_2_0__3 [label = "", fixedsize = false, width = 0, height = 0, shape = none]
+P0_2__3 -> P0_2_0__3 [label = <>]
+P0_2_0__3 -> P0_2_0__4 [label = <>, weight = 100]
+P0_2_0__4 [shape = plaintext, label = <<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4"> <TR><TD>Beginning of process <FONT COLOR="darkgreen">WD</FONT></TD></TR><TR><TD><FONT COLOR="darkgreen">{4}</FONT><FONT COLOR="blue">let</FONT> id_w: id = ID_w</TD></TR><TR><TD><FONT COLOR="darkgreen">{8}</FONT><FONT COLOR="blue">event</FONT> WDStartsSession(ID_w,ID_m)</TD></TR><TR><TD><FONT COLOR="darkgreen">{9}</FONT><FONT COLOR="blue">new </FONT>r1_3</TD></TR><TR><TD><FONT COLOR="darkgreen">{10}</FONT><FONT COLOR="blue">new </FONT>r2_3</TD></TR><TR><TD><FONT COLOR="darkgreen">{12}</FONT><FONT COLOR="blue">let</FONT> r2_bits: bitstring = r2_3</TD></TR><TR><TD><FONT COLOR="darkgreen">{11}</FONT><FONT COLOR="blue">let</FONT> r1_bits: bitstring = r1_3</TD></TR><TR><TD><FONT COLOR="darkgreen">{7}</FONT><FONT COLOR="blue">let</FONT> k_qr_1: secKey = k_qr_3</TD></TR><TR><TD><FONT COLOR="darkgreen">{5}</FONT><FONT COLOR="blue">let</FONT> k_w: bitstring = kw</TD></TR><TR><TD><FONT COLOR="darkgreen">{13}</FONT><FONT COLOR="blue">let</FONT> qr1: qrcode = qrenc((kw,r1_3,r2_3),k_qr_3)<br/>
+</TD></TR></TABLE>>]
+P0_2_0__4 -> P0_2_0__5 [label = <>, weight = 100]
+P0_2_1__3 -> P0_2_1__4 [label = <>, weight = 100]
+P0_2_1__4 [shape = plaintext, label = <<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4"> <TR><TD>Beginning of process <FONT COLOR="darkgreen">WD</FONT></TD></TR><TR><TD><FONT COLOR="darkgreen">{4}</FONT><FONT COLOR="blue">let</FONT> id_w: id = ID_w</TD></TR><TR><TD><FONT COLOR="darkgreen">{8}</FONT><FONT COLOR="blue">event</FONT> WDStartsSession(ID_w,ID_m)</TD></TR><TR><TD><FONT COLOR="darkgreen">{9}</FONT><FONT COLOR="blue">new </FONT>r1_4</TD></TR><TR><TD><FONT COLOR="darkgreen">{10}</FONT><FONT COLOR="blue">new </FONT>r2_4</TD></TR><TR><TD><FONT COLOR="darkgreen">{12}</FONT><FONT COLOR="blue">let</FONT> r2_bits: bitstring = r2_4</TD></TR><TR><TD><FONT COLOR="darkgreen">{11}</FONT><FONT COLOR="blue">let</FONT> r1_bits: bitstring = r1_4</TD></TR><TR><TD><FONT COLOR="darkgreen">{7}</FONT><FONT COLOR="blue">let</FONT> k_qr_1: secKey = k_qr_3</TD></TR><TR><TD><FONT COLOR="darkgreen">{5}</FONT><FONT COLOR="blue">let</FONT> k_w: bitstring = kw</TD></TR><TR><TD><FONT COLOR="darkgreen">{13}</FONT><FONT COLOR="blue">let</FONT> qr1: qrcode = qrenc((kw,r1_4,r2_4),k_qr_3)<br/>
+</TD></TR></TABLE>>]
+P0_2_1__4 -> P0_2_1__5 [label = <>, weight = 100]
+P0_2_0__5 -> P0_2_0__6 [label = <>, weight = 100]
+P0_1_0__5 -> P0_1_0__6 [label = <>, weight = 100]
+{rank = same; P0_1_0__6 P0_2_0__6}
+P0_2_0__6 -> P0_2_0__7 [label = <>, weight = 100]
+P0_1_0__6 -> P0_1_0__7 [label = <>, weight = 100]
+{rank = same; P0_1_0__7 P0_2_0__7}
+P0_2_0__7 -> P0_1_0__7 [label = <qrenc((kw,r1_3,r2_3),k_qr_3)>, arrowhead = normal]
+P0_2_0__7 -> P0_2_0__8 [label = <>, weight = 100]
+P0_1_0__7 -> P0_1_0__8 [label = <>, weight = 100]
+{rank = same; P0_1_0__8 P0_2_0__8}
+P0_1_0__8 -> P0_1_0__9 [label = <>, weight = 100]
+P0_1_0__9 [shape = plaintext, label = <<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4"> <TR><TD><FONT COLOR="darkgreen">{36}</FONT><FONT COLOR="blue">let</FONT> k_qr_2: secKey = k_qr_3</TD></TR><TR><TD><FONT COLOR="darkgreen">{39}</FONT><FONT COLOR="blue">let</FONT> (k_w_1: bitstring,r1_bits_1: bitstring,<br/>
+r2_bits_1: bitstring) = (kw,r1_3,r2_3)</TD></TR><TR><TD><FONT COLOR="darkgreen">{34}</FONT><FONT COLOR="blue">let</FONT> k_m: bitstring = km</TD></TR><TR><TD><FONT COLOR="darkgreen">{43}</FONT><FONT COLOR="blue">let</FONT> k_m'_1: bitstring = rot(xor(km,concat(<br/>
+r2_3,km)))</TD></TR><TR><TD><FONT COLOR="darkgreen">{42}</FONT><FONT COLOR="blue">let</FONT> k_w'_1: bitstring = rot(xor(kw,concat(<br/>
+r1_3,kw)))</TD></TR><TR><TD><FONT COLOR="darkgreen">{44}</FONT><FONT COLOR="blue">let</FONT> C_1: bitstring = concat(xor(kw,rot(xor(<br/>
+km,concat(r2_3,km)))),xor(km,rot(xor(kw,concat(<br/>
+r1_3,kw)))))</TD></TR><TR><TD><FONT COLOR="darkgreen">{41}</FONT><FONT COLOR="blue">let</FONT> B_1: bitstring = xor(disjunction(ID_m,<br/>
+ID_w),r2_3)</TD></TR><TR><TD><FONT COLOR="darkgreen">{40}</FONT><FONT COLOR="blue">let</FONT> A_1: bitstring = xor(xor(km,kw),r1_3)</TD></TR><TR><TD><FONT COLOR="darkgreen">{35}</FONT><FONT COLOR="blue">let</FONT> btAddr_2: bitstring = btAddr_3</TD></TR><TR><TD><FONT COLOR="darkgreen">{45}</FONT><FONT COLOR="blue">event</FONT> MTSendsBluetooth(xor(xor(km,kw),r1_3),<br/>
+xor(disjunction(ID_m,ID_w),r2_3),concat(xor(kw,<br/>
+rot(xor(km,concat(r2_3,km)))),xor(km,rot(xor(kw,<br/>
+concat(r1_3,kw))))),h(btAddr_3))</TD></TR></TABLE>>]
+P0_1_0__9 -> P0_1_0__10 [label = <>, weight = 100]
+P0_1_0__10 -> P0_1_0__11 [label = <>, weight = 100]
+P0_0__3 -> P0_0__4 [label = <>, weight = 100]
+P__0 -> P__1 [label = <>, weight = 100]
+{rank = same; P__1 P0_0__4 P0_1_0__11}
+P0_1_0__11 -> P0_1_0__12 [label = <>, weight = 100]
+P__1 -> P__2 [label = <>, weight = 100]
+{rank = same; P__2 P0_1_0__12}
+P0_1_0__12 -> P__2 [label = <(~M,~M_1,~M_2,~M_3)>, arrowhead = normal]
+P0_1_0__12 -> P0_1_0__13 [label = <>, weight = 100]
+P0_0__4 -> P0_0__5 [label = <>, weight = 100]
+P__2 -> P__3 [label = <>, weight = 100]
+{rank = same; P__3 P0_0__5 P0_1_0__13}
+P0_2_1__5 -> P0_2_1__6 [label = <>, weight = 100]
+P0_2_0__8 -> P0_2_0__9 [label = <>, weight = 100]
+P0_1_0__13 -> P0_1_0__14 [label = <>, weight = 100]
+{rank = same; P0_1_0__14 P0_2_0__9 P0_2_1__6}
+P0_2_1__6 -> P0_2_1__7 [label = <>, weight = 100]
+P0_1_0__14 -> P0_1_0__15 [label = <>, weight = 100]
+{rank = same; P0_1_0__15 P0_2_1__7}
+P0_2_1__7 -> P0_1_0__15 [label = <qrenc((kw,r1_4,r2_4),k_qr_3)>, arrowhead = normal]
+P0_2_1__7 -> P0_2_1__8 [label = <>, weight = 100]
+P0_2_0__9 -> P0_2_0__10 [label = <>, weight = 100]
+P0_1_0__15 -> P0_1_0__16 [label = <>, weight = 100]
+{rank = same; P0_1_0__16 P0_2_0__10 P0_2_1__8}
+P0_1_0__16 -> P0_1_0__17 [label = <>, weight = 100]
+P0_1_0__17 [shape = plaintext, label = <<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4"> <TR><TD><FONT COLOR="darkgreen">{48}</FONT><FONT COLOR="blue">let</FONT> M1_1: bitstring = (kw,r1_4,r2_4)</TD></TR></TABLE>>]
+P0_1_0__17 -> P0_1_0__18 [label = <>, weight = 100]
+P0_1_0__18 -> P0_1_0__19 [label = <>, weight = 100]
+P0_1_0__19 [color = red, shape = plaintext, label = <<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4"> <TR><TD><FONT COLOR="darkgreen">{49}</FONT><FONT COLOR="blue">event</FONT> MTReceivesQR2(ID_w,ID_m,(kw,r1_4,r2_4))<br/>
+</TD></TR></TABLE>>]
+P0_1_0__19 -> P0_1_0__20 [label = <>, weight = 100]
+Abbrev [shape = plaintext, label = <<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4"><TR> <TD> Abbreviations </TD></TR><TR><TD>~M = xor(xor(km,kw),r1_3)</TD></TR><TR><TD>~M_1 = xor(disjunction(ID_m,ID_w),r2_3)</TD></TR><TR><TD>~M_2 = concat(xor(kw,rot(xor(km,concat(r2_3,km)))),<br/>
+xor(km,rot(xor(kw,concat(r1_3,kw)))))</TD></TR><TR><TD>~M_3 = h(btAddr_3)</TD></TR></TABLE>>]Abbrev -> P__0 [style = invisible, weight =100]}

@@ -5,6 +5,7 @@ type pubKey.
 type secKey.
 type nonce.
 type id.
+type qrcode.
 type label.
 type key.
 (* Channels *)
@@ -41,13 +42,17 @@ fun conjunction(bitstring, bitstring): bitstring.
 fun id2bits(id): bitstring [data, typeConverter].
 fun nonce2bits(nonce): bitstring [data, typeConverter].
 fun bits2id(bitstring): id [data, typeConverter].
+fun qr2bits(qrcode): bitstring [data, typeConverter].
 fun label2bits(label): bitstring [data, typeConverter].
 fun b2k(bitstring): key [data, typeConverter].
 
-(* Symmetric encryption *)
+(* QR code operations *)
+fun qrenc(bitstring, secKey): qrcode.
+reduc forall m: bitstring, k: secKey; qrdec(qrenc(m, k), k) = m.
+
 fun senc(bitstring, key): bitstring.
 reduc forall m: bitstring, n: key;
-    sdec(senc(m, n), n) = m.
+sdec(senc(m, n), n) = m.
 
 (* XOR *)
 fun xor(bitstring, bitstring): bitstring.
@@ -72,13 +77,6 @@ event WDGeneratesSessionKey(bitstring).
 (*FAIL EVENTS*)
 event M1VerificationFailed().
 event CVerificationFailed().
-event UserQRVerificationFailed().
-event UserDeviceIDMismatch().
-
-query event(M1VerificationFailed()).
-query event(CVerificationFailed()).
-query event(UserQRVerificationFailed()).
-query event(UserDeviceIDMismatch()).
 
 (* Debug Queries *)
 query attacker(kw).
@@ -92,12 +90,6 @@ query A: bitstring, B: bitstring, C: bitstring, hashedBtAddress: bitstring;
     inj-event(MTSendsBluetooth(A, B, C, hashedBtAddress)).
 
 query id1: id, id2: id, msg: bitstring;
-    inj-event(MTReceivesQR1(id1, id2, msg)) ==> inj-event(WDSendsQR1(id1, id2, msg)).
-
-query id1: id, id2: id, msg: bitstring;
-    event(MTReceivesQR1(id1, id2, msg)) ==> event(WDSendsQR1(id1, id2, msg)).
-
-query id1: id, id2: id, msg: bitstring;
     inj-event(MTReceivesQR2(id1, id2, msg)) ==> inj-event(WDSendsQR2(id2, id1, msg)).
 
 query id1: id, id2: id, msg: bitstring;
@@ -107,7 +99,7 @@ query id1: id, id2: id, msg: bitstring;
     inj-event(MTAuthenticatesWD(id2, id1, msg)) ==> (inj-event(MTReceivesQR2(id1, id2, msg)) ==> inj-event(WDSendsQR2(id1, id2, msg))).
 
 (* Wearable Device Process *)
-let WD(id_w: id, k_w: bitstring, btAddr: bitstring, k_qr: key) =
+let WD(id_w: id, k_w: bitstring, btAddr: bitstring, k_qr: secKey) =
     event WDStartsSession(id_w, ID_m);
     new r1: nonce;
     new r2: nonce;
@@ -115,18 +107,12 @@ let WD(id_w: id, k_w: bitstring, btAddr: bitstring, k_qr: key) =
     let r1_bits = nonce2bits(r1) in
     let r2_bits = nonce2bits(r2) in
     
-    (* Include device IDs in the QR code to bind it to this specific pair *)
-    let qr1 = senc((k_w, r1_bits, r2_bits, id2bits(id_w), id2bits(ID_m)), k_qr) in
-    event WDSendsQR1(id_w, ID_m, (k_w, r1_bits, r2_bits));
-    (* User physically shows QR code to MT *)
+    let qr1 = qrenc((k_w, r1_bits, r2_bits), k_qr) in
+    (* event WDSendsQR1(id_w, ID_m, (k_w, r1_bits, r2_bits)); *)
     out(oob, qr1);
+    (* out(oob, debug_qr1); *)
     
-    (* Create a session key for Bluetooth communication *)
-    new bt_key: key;
-    (* Receive encrypted message via Bluetooth *)
-    in(bluetooth, encryptedMsg: bitstring);
-    let (A: bitstring, B: bitstring, C: bitstring, hashedBtAddress: bitstring) = sdec(encryptedMsg, bt_key) in
-    
+    in(bluetooth, (A: bitstring, B: bitstring, C: bitstring, hashedBtAddress: bitstring));
     if hashedBtAddress = h(btAddr) then
     (
         event WDReceivesBluetooth(A, B, C, hashedBtAddress);
@@ -140,7 +126,7 @@ let WD(id_w: id, k_w: bitstring, btAddr: bitstring, k_qr: key) =
             let r = xor(r1_bits, r2_bits) in
             let M1 = h((id_w, S, r, ID_m)) in
             event WDSendsQR2(id_w, ID_m, M1);
-            out(oob, senc((M1, ID_m), k_qr));
+            out(oob, qrenc((M1, ID_m), k_qr));
             event WDCompletesSession(id_w, ID_m, M1);
             let SK = h(M1) in
             event WDGeneratesSessionKey(SK);
@@ -154,82 +140,55 @@ let WD(id_w: id, k_w: bitstring, btAddr: bitstring, k_qr: key) =
     
 
 (* Mobile Terminal Process *)
-let MT(id_m: id, k_m: bitstring, btAddr: bitstring, k_qr: key) =
+let MT(id_m: id, k_m: bitstring, btAddr: bitstring, k_qr: secKey) =
     event MTStartsSession(id_m, ID_w);
-    in(uch, (qr1: bitstring, id_w_fromuser: id, id_m_fromuser: id));
-    let (k_w: bitstring, r1_bits: bitstring, r2_bits: bitstring, id_w_bits: bitstring, id_m_bits: bitstring) = sdec(qr1, k_qr) in
     
-    (* Verify that user-provided IDs match what's in the QR code *)
-    if id_w_fromuser = bits2id(id_w_bits) && id_m_fromuser = bits2id(id_m_bits) then
+    in(oob, qr1: qrcode);
+    let (k_w: bitstring, r1_bits: bitstring, r2_bits: bitstring) = qrdec(qr1, k_qr) in
+    (* event MTReceivesQR1(id_m, ID_w, (k_w, r1_bits, r2_bits)); *)
+    let A = xor(xor(k_m, k_w), r1_bits) in
+    let B = xor(disjunction(id2bits(id_m), id2bits(ID_w)), r2_bits) in
+    let k_w' = rot(xor(k_w, (concat(r1_bits, k_w)))) in 
+    let k_m' = rot(xor(k_m, (concat(r2_bits, k_m)))) in 
+    let C = concat(xor(k_w, k_m'), xor(k_m, k_w')) in
+
+    (* OUT M1 = A,B,C*)
+    event MTSendsBluetooth(A, B, C, h(btAddr));
+    out(bluetooth, (A,B,C, h(btAddr)));
+    
+    in(oob, qr2: qrcode);
+    let (M1: bitstring) = qrdec(qr2, k_qr) in
+    event MTReceivesQR2(ID_w, id_m, M1);
+
+    let S = disjunction(k_w, k_m) in
+    let r = xor(r1_bits, r2_bits) in
+    let M1' = h((ID_w, S, r, id2bits(id_m))) in
+    if M1 = M1' then
     (
-        event MTReceivesQR1(ID_w, id_m, (k_w, r1_bits, r2_bits));
-        let A = xor(xor(k_m, k_w), r1_bits) in
-        let B = xor(disjunction(id2bits(id_m), id2bits(ID_w)), r2_bits) in
-        let k_w' = rot(xor(k_w, (concat(r1_bits, k_w)))) in 
-        let k_m' = rot(xor(k_m, (concat(r2_bits, k_m)))) in 
-        let C = concat(xor(k_w, k_m'), xor(k_m, k_w')) in
-
-        (* Create a session key for Bluetooth communication *)
-        new bt_key: key;
-        (* OUT M1 = A,B,C - encrypted for Bluetooth *)
-        event MTSendsBluetooth(A, B, C, h(btAddr));
-        out(bluetooth, senc((A, B, C, h(btAddr)), bt_key));
-        
-        in(oob, qr2: bitstring);
-        let (M1: bitstring, id_m_check: id) = sdec(qr2, k_qr) in
-        event MTReceivesQR2(ID_w, id_m, M1);
-
-        let S = disjunction(k_w, k_m) in
-        let r = xor(r1_bits, r2_bits) in
-        let M1' = h((ID_w, S, r, id2bits(id_m))) in
-        if M1 = M1' then
-        (
-            event MTAuthenticatesWD(id_m, ID_w, M1);
-            let SK = h(M1) in
-            event MTGeneratesSessionKey(SK);
-            out(uch, true);
-            out(bluetooth, senc(SK_test, b2k(SK)))
-        ) 
-    )
+        event MTAuthenticatesWD(id_m, ID_w, M1);
+        let SK = h(M1) in
+        event MTGeneratesSessionKey(SK);
+        out(uch, true);
+        out(bluetooth, senc(SK_test, b2k(SK)))
+    ) 
     else
     (
         event M1VerificationFailed()
     ).
 
-let User(k_qr: key) =
-    in(oob, qr1: bitstring);
-    let (k_w: bitstring, r1_bits: bitstring, r2_bits: bitstring, id_w_bits: bitstring, id_m_bits: bitstring) = sdec(qr1, k_qr) in
-    if bits2id(id_w_bits) = ID_w && bits2id(id_m_bits) = ID_m then
+let U () =
+    in(uch, b: bool);
+    if b then
     (
-        if h(k_w) <> h(r1_bits) && r1_bits <> r2_bits then
-        (
-            out(uch, (qr1, bits2id(id_w_bits), bits2id(id_m_bits)));
-            in(uch, result: bool);
-            if result then
-            (
-                out(uch, true)
-            )
-            else
-            (
-                out(uch, false)
-            )
-        )
-        else
-        (
-            event UserQRVerificationFailed()
-        )
-    )
-    else
-    (
-        event UserDeviceIDMismatch()
+        event MTCompletesSession(label2bits(ACCEPTED))
     ).
     
 (* Main Process *)
 process
     new btAddr: bitstring;
-    new k_qr: key;
+    new k_qr: secKey;
     (
-        (!WD(ID_w, kw, btAddr, k_qr) | !MT(ID_m, km, btAddr, k_qr) | !User(k_qr)) |
+        (!WD(ID_w, kw, btAddr, k_qr) | !MT(ID_m, km, btAddr, k_qr)) |
         (phase 1; 
          out(bluetooth, (kw, km)))
     )
