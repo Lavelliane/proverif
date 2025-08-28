@@ -1,0 +1,284 @@
+set ignoreTypes = false.
+
+(* Symmetric key encryption & Hash *)
+type key.
+fun senc(bitstring, key): bitstring.
+reduc forall m: bitstring, k: key; sdec(senc(m,k),k) = m.
+
+(* Diffie-Hellman *)
+type G.
+type exponent.
+
+const g: G.
+fun exp(G, exponent): G.
+equation forall x: exponent, y: exponent; exp(exp(g, x), y) = exp(exp(g, y), x).
+
+(* Mac & Hash & Conversion*)
+fun hmac(key, bitstring): bitstring.
+fun hash(bitstring): bitstring.
+fun THash(bitstring): bitstring.
+fun k2b(key): bitstring [data, typeConverter].
+fun b2k(bitstring): key [data, typeConverter].
+fun g2b(G): bitstring [data, typeConverter].
+fun g2k(G): key [data, typeConverter].
+fun length(bitstring): bitstring.
+
+(* AEAD *)
+       (* aead_enc(key, associated_data, plain_text) *)
+fun aead_enc(key, bitstring, bitstring): bitstring.
+       (* aead_dec(key, associated_data, cipher_text) *)
+fun aead_dec(key, bitstring, bitstring): bitstring
+reduc forall k: key, p: bitstring, ad: bitstring;
+    aead_dec(k, ad, aead_enc(k, ad, p)) = p.
+
+(* Random number generation *)
+fun random32(): bitstring.
+fun current_time(): bitstring.
+
+(********************************************************)
+(*  TLS 1.3 Key Schedule  *)
+(********************************************************)
+type label.
+type keyid.
+type entid.
+type nonce.
+type timestamp.
+
+fun l2b(label): bitstring [data, typeConverter].
+fun eid2b(entid): bitstring [data, typeConverter].
+fun kid2b(keyid): bitstring [data, typeConverter].
+fun n2b(nonce): bitstring [data, typeConverter].
+fun t2b(timestamp): bitstring [data, typeConverter].
+
+const tls13_version, psk_ke, psk_dhe_ke, early_data, end_of_early_data: label.
+const client_finished, server_finished, master_secret, 
+      client_key_expansion, server_key_expansion: label.
+const tls13_derived,
+      tls13_client_handshake_traffic_secret, 
+      tls13_server_handshake_traffic_secret, 
+      tls13_client_early_traffic_secret, 
+      tls13_client_application_traffic_secret, 
+      tls13_server_application_traffic_secret, 
+      tls13_key, tls13_iv, 
+      tls13_early_exporter_master_secret, 
+      tls13_exporter_master_secret, 
+      tls13_resumption_master_secret, 
+      tls13_resumption_psk_binder_key,
+      tls13_finished: label.
+const zero, derived: bitstring.
+const early_traffic: bitstring.
+
+letfun prf(k: key, x: bitstring) = 
+       hmac(k, x).
+
+letfun hkdf_extract(s: key, k: bitstring) =
+       prf(s,k).
+
+letfun hkdf_expand_label(k: key, l: label, h: bitstring) = 
+       prf(k, (l, h)).       							  
+ 
+letfun derive_secret(k:key, l:label, m:bitstring) = 
+       hkdf_expand_label(k, l, hash(m)).
+
+(* New Session Ticket Generation with Forward Secrecy *)
+letfun generate_new_session_ticket(k_af: key, r_eph_priv: exponent, a_kid: keyid) =
+    let r_eph_pub = exp(g, r_eph_priv) in
+    let ticket_nonce = random32() in
+    let ticket_lifetime = current_time() in
+    let ticket_mac = hmac(k_af, (kid2b(a_kid), g2b(r_eph_pub), ticket_nonce, ticket_lifetime)) in
+    (r_eph_pub, ticket_nonce, ticket_lifetime, ticket_mac).
+
+(* Client Hello Generation for 0-RTT FS *)
+letfun generate_client_hello_0rtt_fs(psk: key, r_eph_pub: G, ticket_nonce: bitstring, i_eph_priv: exponent) =
+    let i_eph_pub = exp(g, i_eph_priv) in
+    let shared_secret = g2k(exp(r_eph_pub, i_eph_priv)) in
+    let early_secret = b2k(hkdf_extract(shared_secret, early_traffic)) in
+    let transcript = hash((g2b(i_eph_pub), ticket_nonce)) in
+    let early_key = b2k(derive_secret(early_secret, tls13_client_early_traffic_secret, transcript)) in
+    let timestamp = current_time() in
+    let nonce_commitment = hmac(early_key, (ticket_nonce, timestamp)) in
+    let client_hello_msg = (tls13_version, early_data, i_eph_pub, nonce_commitment) in
+    (i_eph_pub, shared_secret, early_key, nonce_commitment, timestamp, client_hello_msg).
+
+(* Server validation and key derivation *)
+letfun validate_and_derive_keys(r_eph_priv: exponent, i_eph_pub: G, ticket_nonce: bitstring, nonce_commitment: bitstring, timestamp: bitstring) =
+    let shared_secret = g2k(exp(i_eph_pub, r_eph_priv)) in
+    let early_secret = b2k(hkdf_extract(shared_secret, early_traffic)) in
+    let transcript = hash((g2b(i_eph_pub), ticket_nonce)) in
+    let early_key = b2k(derive_secret(early_secret, tls13_client_early_traffic_secret, transcript)) in
+    let expected_commitment = hmac(early_key, (ticket_nonce, timestamp)) in
+    if nonce_commitment = expected_commitment then
+        (shared_secret, early_key)
+    else 
+        (b2k(zero), b2k(zero)).
+
+letfun key_gen_0rtt_fs(shared_secret: key, msg1: bitstring) =
+       let hs = b2k(hkdf_extract(shared_secret, derive_secret(b2k(zero), tls13_derived, zero))) in
+       let tk_chs = b2k(derive_secret(hs, tls13_client_handshake_traffic_secret, msg1)) in
+       let tk_shs = b2k(derive_secret(hs, tls13_server_handshake_traffic_secret, msg1)) in
+       let fk_s = b2k(hkdf_expand_label(tk_shs, tls13_finished, zero)) in 
+       let fk_c = b2k(hkdf_expand_label(tk_chs, tls13_finished, zero)) in 
+       let s_finished = hmac(fk_s, msg1) in
+       let msg2 = (msg1, s_finished) in 
+       let ms = b2k(hkdf_extract(b2k(zero), derive_secret(hs, tls13_derived, zero))) in
+       let tk_capp = b2k(derive_secret(ms, tls13_client_application_traffic_secret, msg2)) in
+       let tk_sapp = b2k(derive_secret(ms, tls13_server_application_traffic_secret, msg2)) in
+       (tk_chs, tk_shs, fk_s, fk_c, tk_capp, tk_sapp, s_finished).
+
+(********************************************************)
+(*  TLS 1.3 0-RTT FS: Body *)
+(********************************************************)
+free c: channel.
+free sp: channel [private]. 
+free app_data1, app_data2, app_data3: bitstring [private].
+
+(********************************************************)
+(*  AKMA with FS  *)
+(********************************************************)
+table aanf_key_db(keyid, key, entid). (*a-kid, k_akma, supi*)
+table session_ticket_db(keyid, key, G, bitstring, bitstring, bitstring). (*a-kid, psk, r_eph_pub, ticket_nonce, ticket_lifetime, ticket_mac*)
+table replay_cache(bitstring, bitstring). (*nonce, timestamp*)
+
+const akma_0x82, akma_0x81: label.
+
+(* Authentication queries - retained from original *)
+event S_STEP1_C_to_S(keyid, key, bitstring, G, bitstring).
+event E_STEP1_C_to_S(keyid, key, bitstring, G, bitstring).
+event S_STEP2_S_to_C(key, bitstring).
+event E_STEP2_S_to_C(key, bitstring).
+event S_STEP3_C_to_S(key, bitstring).
+event E_STEP3_C_to_S(key, bitstring).
+
+query kid: keyid, k: key, rand: bitstring, dh_pub :G, binder: bitstring;
+       inj-event(E_STEP1_C_to_S(kid, k, rand, dh_pub, binder)) ==> inj-event(S_STEP1_C_to_S(kid, k, rand, dh_pub, binder)).
+
+query k: key, aead_finished: bitstring;
+       inj-event(E_STEP2_S_to_C(k, aead_finished)) ==> inj-event(S_STEP2_S_to_C(k, aead_finished)).
+
+query k: key, aead_finished: bitstring;
+       inj-event(E_STEP3_C_to_S(k, aead_finished)) ==> inj-event(S_STEP3_C_to_S(k, aead_finished)).
+
+(* Secrecy assumptions - retained from original *)
+query attacker(app_data1).
+query attacker(app_data2).
+query attacker(app_data3).
+
+let proc_AAnF() =
+(*STEP1: early data receiving*)
+       in(sp, (ss_id: bitstring, a_kid: keyid, af_id: entid));
+       get aanf_key_db(=a_kid, k_akma, supi) in
+       let k_af  = b2k(prf(k_akma, (l2b(akma_0x82), eid2b(af_id), length(eid2b(af_id))))) in
+       out(sp, (ss_id, k_af, supi)).
+
+let proc_UE(supi: entid, a_kid: keyid, k_akma: key, af_id: entid) =
+(*STEP1: Initial handshake - receive session ticket*)
+       let k_af = b2k(prf(k_akma, (l2b(akma_0x82), eid2b(af_id), length(eid2b(af_id))))) in
+       (* Receive NewSessionTicket from previous session *)
+       in(c, (r_eph_pub: G, ticket_nonce: bitstring, ticket_lifetime: bitstring, ticket_mac: bitstring));
+       (* Validate ticket MAC with k_af *)
+       if ticket_mac = hmac(k_af, (kid2b(a_kid), g2b(r_eph_pub), ticket_nonce, ticket_lifetime)) then
+       (
+(*STEP2: 0-RTT data sending with Forward Secrecy*)
+              new i_eph_priv: exponent;
+              let (i_eph_pub: G, shared_secret: key, early_key: key, nonce_commitment: bitstring, timestamp: bitstring, client_hello: bitstring) 
+                  = generate_client_hello_0rtt_fs(k_af, r_eph_pub, ticket_nonce, i_eph_priv) in
+              let e_app_data1 = aead_enc(early_key, (g2b(i_eph_pub), nonce_commitment), app_data1) in
+              event S_STEP1_C_to_S(a_kid, shared_secret, ticket_nonce, i_eph_pub, nonce_commitment);
+              out(c, (client_hello, e_app_data1, a_kid));
+              
+(*STEP3: Complete handshake*)                            
+              in(c, (server_hello: bitstring, e_sfinished: bitstring, e_app_data2: bitstring));              
+              let msg1 = (client_hello, server_hello) in
+              let (tk_chs: key, tk_shs: key, fk_s: key, fk_c: key, tk_capp: key, tk_sapp: key, s_finished: bitstring) 
+                  = key_gen_0rtt_fs(shared_secret, msg1) in
+              if s_finished = aead_dec(tk_shs, l2b(server_finished), e_sfinished) then
+              (
+                     let app_data2 = aead_dec(tk_sapp, (g2b(i_eph_pub), timestamp), e_app_data2) in
+                     (
+                            event E_STEP2_S_to_C(shared_secret, e_sfinished);
+                            let c_finished = hmac(fk_c, (msg1, e_sfinished)) in
+                            let e_cfinished = aead_enc(tk_chs, l2b(client_finished), c_finished) in
+                            let e_app_data3 = aead_enc(tk_capp, (g2b(i_eph_pub), timestamp), app_data3) in 
+(*STEP4*)              
+                            event S_STEP3_C_to_S(shared_secret, e_cfinished);
+                            out(c, (e_cfinished, e_app_data3))                            
+                     )                                          
+              )
+       ).
+
+let proc_AF(af_id: entid) =
+(*STEP0: Get AKMA key from AAnF and issue NewSessionTicket*)
+       new ss_id: bitstring;
+       new a_kid: keyid;
+       out(sp, (ss_id, a_kid, af_id));
+       in(sp, (recv_ss_id: bitstring, k_af: key, ue_supi: entid));
+       if recv_ss_id = ss_id then
+       (
+              new r_eph_priv: exponent;
+              let (r_eph_pub: G, ticket_nonce: bitstring, ticket_lifetime: bitstring, ticket_mac: bitstring) 
+                  = generate_new_session_ticket(k_af, r_eph_priv, a_kid) in
+              out(c, (r_eph_pub, ticket_nonce, ticket_lifetime, ticket_mac));
+
+(*STEP1: Receive 0-RTT ClientHello and validate*)
+              in(c, ((tls_ver: label, early_data_label: label, i_eph_pub: G, nonce_commitment: bitstring), e_app_data1: bitstring, pre_shared_key: keyid));
+              if (tls_ver = tls13_version) && (early_data_label = early_data) && (pre_shared_key = a_kid) then
+              (
+                     let client_hello = (tls_ver, early_data_label, i_eph_pub, nonce_commitment) in 
+                     
+                     (* Validate ticket and nonce commitment *)
+                     if ticket_mac = hmac(k_af, (kid2b(a_kid), g2b(r_eph_pub), ticket_nonce, ticket_lifetime)) then
+                     (
+                            (* Check replay cache *)
+                            new timestamp: bitstring;
+                            get replay_cache(=ticket_nonce, stored_timestamp) in 0 (* nonce already used - replay attack *)
+                            else
+                            (
+                                   let (shared_secret: key, early_key: key) = validate_and_derive_keys(r_eph_priv, i_eph_pub, ticket_nonce, nonce_commitment, timestamp) in
+                                   if shared_secret <> b2k(zero) then
+                                   (
+                                          (* Add nonce to replay cache *)
+                                          insert replay_cache(ticket_nonce, timestamp);
+                                          
+                                          let app_data1_recv = aead_dec(early_key, (g2b(i_eph_pub), nonce_commitment), e_app_data1) in
+                                          if app_data1_recv = app_data1 then
+                                          (
+                                                 event E_STEP1_C_to_S(a_kid, shared_secret, ticket_nonce, i_eph_pub, nonce_commitment);
+                                                 
+                                                 let server_hello = (tls13_version, r_eph_pub, a_kid) in                             
+                                                 let msg1 = (client_hello, server_hello) in 
+                                                 let (tk_chs: key, tk_shs: key, fk_s: key, fk_c: key, tk_capp: key, tk_sapp: key, s_finished: bitstring) 
+                                                     = key_gen_0rtt_fs(shared_secret, msg1) in
+                                                 let e_sfinished = aead_enc(tk_shs, l2b(server_finished), s_finished) in 
+                                                 let e_app_data2 = aead_enc(tk_sapp, (g2b(i_eph_pub), timestamp), app_data2) in  
+                                                 event S_STEP2_S_to_C(shared_secret, e_sfinished);   
+                                                 out(c, (server_hello, e_sfinished, e_app_data2));                                                        
+(*STEP2: Complete handshake*)       
+                                                 in(c, (e_cfinished: bitstring, e_app_data3: bitstring));
+                                                 if (hmac(fk_c, (msg1, e_sfinished))) = aead_dec(tk_chs, l2b(client_finished), e_cfinished) then
+                                                 (
+                                                        if app_data3 = aead_dec(tk_capp, (g2b(i_eph_pub), timestamp), e_app_data3) then
+                                                        (
+                                                               event E_STEP3_C_to_S(shared_secret, e_cfinished);
+                                                               
+                                                               (* Generate new session ticket for next session *)
+                                                               new new_r_eph_priv: exponent;
+                                                               let (new_r_eph_pub: G, new_ticket_nonce: bitstring, new_ticket_lifetime: bitstring, new_ticket_mac: bitstring) 
+                                                                   = generate_new_session_ticket(k_af, new_r_eph_priv, a_kid) in
+                                                               out(c, (new_r_eph_pub, new_ticket_nonce, new_ticket_lifetime, new_ticket_mac))
+                                                        )
+                                                 )     
+                                          )
+                                   )
+                            )
+                     )
+              )
+       ).
+
+process 
+       new supi: entid; new k_akma: key; new a_kid: keyid;
+       new af_id: entid;
+
+       insert aanf_key_db(a_kid, k_akma, supi);
+       ( (!proc_UE(supi, a_kid, k_akma, af_id)) | (!proc_AF(af_id)) | (!proc_AAnF()) |
+       phase 1; out(c, (k_akma, af_id))
+       ) 
