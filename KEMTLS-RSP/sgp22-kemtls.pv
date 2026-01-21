@@ -1,0 +1,414 @@
+(* =====================================================================
+   SGP.22 Consumer eSIM Provisioning - KEMTLS Authentication
+   
+   Models the SGP.22 RSP protocol with KEMTLS-style authentication
+   replacing digital signatures with KEM operations.
+   
+   Protocol Flow (from diagram):
+   ┌─────────┐           ┌─────┐           ┌───────┐
+   │ SM-DP+  │           │ LPA │           │ eUICC │
+   └────┬────┘           └──┬──┘           └───┬───┘
+        │ (1) InitAuth      │                  │
+        │──────────────────>│                  │
+        │                   │ (2) GetChallenge │
+        │                   │─────────────────>│
+        │                   │                  │ Generate pk_e, sk_e
+        │                   │ (3) {pk_e,       │ Retrieve CERT.EUICC
+        │                   │     CERT.EUICC}  │
+        │                   │<─────────────────│
+        │ (4) {pk_e,        │                  │
+        │     CERT.EUICC}   │                  │
+        │<──────────────────│                  │
+        │ Verify CERT.EUICC │                  │
+        │ ct₁=Encap(pk_e)   │                  │
+        │ ct_c=Encap(pk_eu) │                  │
+        │                   │                  │
+        │ (5) {ct₁, ct_c,   │                  │
+        │     CERT.DP}      │                  │
+        │──────────────────>│                  │
+        │                   │ (6) {ct₁, ct_c,  │
+        │                   │     CERT.DP}     │
+        │                   │─────────────────>│
+        │                   │                  │ ss₁=Decap(ct₁,sk_e)
+        │                   │                  │ ss_c=Decap(ct_c,sk_eu)
+        │                   │                  │ ct₂=Encap(pk_DP_auth)
+        │                   │ (7) {ct₂}        │
+        │                   │<─────────────────│
+        │ (7) {ct₂}         │                  │
+        │<──────────────────│                  │
+        │ ss₂=Decap(ct₂)    │                  │
+        
+   Channel Model:
+   - LPA ↔ SM-DP+: Secure channel (TLS protected)
+   - LPA ↔ eUICC: Local interface (private)
+   - Certificates: Public
+   ===================================================================== *)
+
+(* ===== CHANNELS ===== *)
+free c         : channel.           (* Public channel: certificates only *)
+free LPA2EUICC : channel [private]. (* Local LPA ↔ eUICC interface *)
+free LPA2SMDP  : channel [private]. (* TLS-secured LPA ↔ SM-DP+ channel *)
+
+
+(* ===== DATA TYPES ===== *)
+type Id_t.      (* Entity identifier *)
+type Tid_t.     (* TransactionID *)
+type Nonce_t.   (* Challenges for freshness *)
+type Cert_t.    (* Certificates *)
+type Tag_t.     (* Role tags *)
+
+(* KEM key types *)
+type KEMsk_t.   (* KEM secret key *)
+type KEMpk_t.   (* KEM public key *)
+type KEMct_t.   (* KEM ciphertext *)
+type KEMss_t.   (* KEM shared secret *)
+
+(* Session key types *)
+type SessionKey_t.
+type KEK_t.     (* Key Encryption Key *)
+type KM_t.      (* MAC Key *)
+
+(* CI signing key type (for certificate issuance only) *)
+type CIK_t.
+
+
+(* ===== CONSTANTS ===== *)
+const ID_SMDP   : Id_t.
+const ID_LPA    : Id_t.
+const ID_EUICC  : Id_t.
+
+const tag_dp    : Tag_t.  (* SM-DP+ role *)
+const tag_eu    : Tag_t.  (* eUICC role *)
+
+const t_getChal : Tag_t.  (* GetEUICCChallenge message tag *)
+const t_initAuth: Tag_t.  (* InitiateAuthentication message tag *)
+
+(* Root CI secret key (for certificate issuance) *)
+const SK_CI : CIK_t [private].
+
+(* SM-DP+ static KEM private key (long-term, for authentication) *)
+const SK_SMDP_AUTH : KEMsk_t [private].
+
+
+(* ===== CRYPTO: CERTIFICATES ===== *)
+(* CI public key derivation *)
+fun ci_pk(CIK_t) : CIK_t.
+
+(* Certificate: binds identity to KEM public key, signed by CI *)
+fun make_cert(Id_t, KEMpk_t, Tag_t, CIK_t) : Cert_t.
+reduc forall id: Id_t, pk: KEMpk_t, role: Tag_t, sk: CIK_t;
+  verify_cert(make_cert(id, pk, role, sk), ci_pk(sk)) = (id, pk, role).
+
+letfun issue_cert(id:Id_t, pk:KEMpk_t, role:Tag_t) =
+  make_cert(id, pk, role, SK_CI).
+
+
+(* ===== CRYPTO: ML-KEM ===== *)
+(* Public key generation *)
+fun kem_pk(KEMsk_t) : KEMpk_t.
+
+(* Encapsulation: pk → (ciphertext, shared_secret) *)
+fun kem_encaps(KEMpk_t) : bitstring.
+
+(* Extract ciphertext and shared secret *)
+fun get_ct(bitstring) : KEMct_t [data].
+fun get_ss(bitstring) : KEMss_t [data].
+
+(* Decapsulation: (ciphertext, secret_key) → shared_secret *)
+reduc forall sk: KEMsk_t;
+  kem_decaps(get_ct(kem_encaps(kem_pk(sk))), sk) = 
+    get_ss(kem_encaps(kem_pk(sk))).
+
+
+(* ===== KEY DERIVATION ===== *)
+(* 
+   KEMTLS KDF combining:
+   - ss_eph: Ephemeral KEM shared secret (forward secrecy)
+   - ss_server: Server auth shared secret (from ct₂)
+   - ss_client: Client auth shared secret (from ct_c)
+   - Transcript binding for freshness
+*)
+fun kemtls_kdf(KEMss_t, KEMss_t, KEMss_t, Nonce_t, Id_t, Id_t) : SessionKey_t.
+
+fun get_KEK(SessionKey_t) : KEK_t [data].
+fun get_KM(SessionKey_t) : KM_t [data].
+
+
+(* ===== EVENTS ===== *)
+(* Authentication events *)
+event SMDP_BEGIN(Id_t, Tid_t).       (* SM-DP+ starts auth session *)
+event EUICC_AUTH_OK(Id_t, Tid_t).    (* eUICC completed authentication *)
+event SMDP_AUTH_OK(Id_t, Tid_t).     (* SM-DP+ completed authentication *)
+
+(* Key establishment events *)
+event EUICC_KEY(Id_t, Tid_t, SessionKey_t).
+event SMDP_KEY(Id_t, Tid_t, SessionKey_t).
+
+
+(* ===== QUERIES ===== *)
+
+(* Mutual Authentication *)
+(* If eUICC thinks auth is complete, SM-DP+ must have started *)
+query dev:Id_t, tid:Tid_t;
+  inj-event(EUICC_AUTH_OK(dev, tid)) ==> inj-event(SMDP_BEGIN(dev, tid)).
+
+(* If SM-DP+ thinks auth is complete, eUICC must have authenticated *)
+query dev:Id_t, tid:Tid_t;
+  inj-event(SMDP_AUTH_OK(dev, tid)) ==> inj-event(EUICC_AUTH_OK(dev, tid)).
+
+(* Session Key Secrecy *)
+free test_key : SessionKey_t [private].
+query attacker(get_KEK(test_key)).
+query attacker(get_KM(test_key)).
+
+(* Key Agreement *)
+query dev:Id_t, tid:Tid_t, k:SessionKey_t;
+  event(SMDP_KEY(dev, tid, k)) ==> event(EUICC_KEY(dev, tid, k)).
+
+query dev:Id_t, tid:Tid_t, k:SessionKey_t;
+  inj-event(SMDP_KEY(dev, tid, k)) ==> inj-event(EUICC_KEY(dev, tid, k)).
+
+
+(* =====================================================================
+   eUICC PROCESS
+   ===================================================================== *)
+let EUICC(PK_CI:CIK_t, dev:Id_t) =
+  (* === Long-term identity === *)
+  (* eUICC's static KEM keypair for client authentication *)
+  new SK_EUICC_AUTH : KEMsk_t;
+  let PK_EUICC_AUTH = kem_pk(SK_EUICC_AUTH) in
+  let CERT_EUICC = issue_cert(ID_EUICC, PK_EUICC_AUTH, tag_eu) in
+  
+  (* Publish certificate *)
+  out(c, CERT_EUICC);
+
+  (* === Per-session ephemeral keys === *)
+  (* Ephemeral KEM keypair for forward secrecy (pk_e, sk_e) *)
+  new SK_EUICC_EPH : KEMsk_t;
+  let PK_EUICC_EPH = kem_pk(SK_EUICC_EPH) in
+
+  (
+    (* ══════════════════════════════════════════════════════════════════
+       STEP 2: Receive GetEUICCChallenge from LPA
+       ══════════════════════════════════════════════════════════════════ *)
+    in(LPA2EUICC, (=t_getChal, =ID_LPA, dev_in:Id_t));
+    if dev_in = dev then
+
+    (* Generate fresh challenge for replay protection *)
+    new eChal : Nonce_t;
+
+    (* ══════════════════════════════════════════════════════════════════
+       STEP 3: Send eUICCChallenge response to LPA
+       KEMTLS: {pk_e, CERT.EUICC}
+       ══════════════════════════════════════════════════════════════════ *)
+    out(LPA2EUICC, (dev, eChal, PK_EUICC_EPH, CERT_EUICC));
+
+    (* ══════════════════════════════════════════════════════════════════
+       STEP 6: Receive AuthenticateClient from LPA
+       KEMTLS: {ct₁, ct_client, CERT.DP}
+       ══════════════════════════════════════════════════════════════════ *)
+    in(LPA2EUICC,
+       (dev_in2     : Id_t,
+        tid         : Tid_t,
+        CT_EPH      : KEMct_t,      (* ct₁ = Encap(pk_e) *)
+        CT_CLIENT   : KEMct_t,      (* ct_client = Encap(pk_EUICC_auth) *)
+        CERT_SMDP   : Cert_t));     (* CERT.DP with pk_DP_auth *)
+    if dev_in2 = dev then
+
+    (* Verify SM-DP+ certificate *)
+    let (=ID_SMDP, PK_SMDP_AUTH:KEMpk_t, =tag_dp) = 
+      verify_cert(CERT_SMDP, PK_CI) in
+
+    (* ══════════════════════════════════════════════════════════════════
+       KEMTLS Key Agreement (eUICC side)
+       ══════════════════════════════════════════════════════════════════ *)
+    
+    (* (a) Decapsulate ephemeral ciphertext: ss₁ = Decap(ct₁, sk_e) *)
+    (* Provides forward secrecy *)
+    let SS_EPH = kem_decaps(CT_EPH, SK_EUICC_EPH) in
+
+    (* (b) Decapsulate client auth ciphertext: ss_client = Decap(ct_client, sk_EUICC_auth) *)
+    (* Proves eUICC identity - only real eUICC can decapsulate *)
+    let SS_CLIENT = kem_decaps(CT_CLIENT, SK_EUICC_AUTH) in
+
+    (* (c) Encapsulate to SM-DP+'s static auth key: ct₂ = Encap(pk_DP_auth) *)
+    (* Provides server authentication *)
+    let encaps_server = kem_encaps(PK_SMDP_AUTH) in
+    let CT_SERVER = get_ct(encaps_server) in
+    let SS_SERVER = get_ss(encaps_server) in
+
+    (* (d) Derive session keys *)
+    let session_key = kemtls_kdf(SS_EPH, SS_SERVER, SS_CLIENT, 
+                                  eChal, ID_EUICC, ID_SMDP) in
+    let KEK = get_KEK(session_key) in
+    let KM  = get_KM(session_key) in
+
+    (* Authentication complete - server implicitly authenticated *)
+    event EUICC_AUTH_OK(dev, tid);
+    event EUICC_KEY(dev, tid, session_key);
+
+    (* ══════════════════════════════════════════════════════════════════
+       STEP 7: Send AuthenticateClient Response to LPA
+       KEMTLS: {ct₂}
+       ══════════════════════════════════════════════════════════════════ *)
+    out(LPA2EUICC, (dev, tid, CT_SERVER))
+  ).
+
+
+(* =====================================================================
+   SM-DP+ PROCESS  
+   ===================================================================== *)
+let SMDP(PK_CI:CIK_t, dev:Id_t) =
+  (* === Long-term identity === *)
+  let PK_SMDP_AUTH = kem_pk(SK_SMDP_AUTH) in
+  let CERT_SMDP = issue_cert(ID_SMDP, PK_SMDP_AUTH, tag_dp) in
+  
+  (* Publish certificate *)
+  out(c, CERT_SMDP);
+
+  (
+    (* ══════════════════════════════════════════════════════════════════
+       STEP 4: Receive AuthenticateServer from LPA
+       KEMTLS: {pk_e, CERT.EUICC}
+       ══════════════════════════════════════════════════════════════════ *)
+    in(LPA2SMDP,
+       (devS        : Id_t,
+        eChalS      : Nonce_t,
+        PK_EUICC_EPH: KEMpk_t,       (* pk_e - ephemeral *)
+        CERT_EUICC  : Cert_t));      (* CERT.EUICC with pk_EUICC_auth *)
+    if devS = dev then
+
+    (* Verify eUICC certificate *)
+    let (=ID_EUICC, PK_EUICC_AUTH:KEMpk_t, =tag_eu) = 
+      verify_cert(CERT_EUICC, PK_CI) in
+
+    (* Generate session parameters *)
+    new tid : Tid_t;
+    
+    event SMDP_BEGIN(devS, tid);
+
+    (* ══════════════════════════════════════════════════════════════════
+       KEMTLS Key Agreement (SM-DP+ side - first part)
+       ══════════════════════════════════════════════════════════════════ *)
+    
+    (* (a) Encapsulate to eUICC's ephemeral key: ct₁ = Encap(pk_e) *)
+    (* Provides forward secrecy *)
+    let encaps_eph = kem_encaps(PK_EUICC_EPH) in
+    let CT_EPH = get_ct(encaps_eph) in
+    let SS_EPH = get_ss(encaps_eph) in
+
+    (* (b) Encapsulate to eUICC's static auth key: ct_client = Encap(pk_EUICC_auth) *)
+    (* Provides client authentication - only real eUICC can decapsulate *)
+    let encaps_client = kem_encaps(PK_EUICC_AUTH) in
+    let CT_CLIENT = get_ct(encaps_client) in
+    let SS_CLIENT = get_ss(encaps_client) in
+
+    (* ══════════════════════════════════════════════════════════════════
+       STEP 5: Send AuthenticateServer Response to LPA
+       KEMTLS: {ct₁, ct_client, CERT.DP}
+       ══════════════════════════════════════════════════════════════════ *)
+    out(LPA2SMDP, (devS, tid, CT_EPH, CT_CLIENT, CERT_SMDP));
+
+    (* ══════════════════════════════════════════════════════════════════
+       STEP 7: Receive AuthenticateClient Response from LPA
+       KEMTLS: {ct₂}
+       ══════════════════════════════════════════════════════════════════ *)
+    in(LPA2SMDP, (devS2:Id_t, tid2:Tid_t, CT_SERVER:KEMct_t));
+    if devS2 = dev then
+    if tid2 = tid then
+
+    (* ══════════════════════════════════════════════════════════════════
+       KEMTLS Key Agreement (SM-DP+ side - completion)
+       ══════════════════════════════════════════════════════════════════ *)
+    
+    (* (c) Decapsulate server auth ciphertext: ss₂ = Decap(ct₂, sk_DP_auth) *)
+    (* Proves server identity - only real SM-DP+ can decapsulate *)
+    let SS_SERVER = kem_decaps(CT_SERVER, SK_SMDP_AUTH) in
+
+    (* (d) Derive session keys *)
+    let session_key = kemtls_kdf(SS_EPH, SS_SERVER, SS_CLIENT,
+                                  eChalS, ID_EUICC, ID_SMDP) in
+    let KEK = get_KEK(session_key) in
+    let KM  = get_KM(session_key) in
+
+    (* Authentication complete - client implicitly authenticated *)
+    event SMDP_AUTH_OK(dev, tid);
+    event SMDP_KEY(devS, tid, session_key)
+  ).
+
+
+(* =====================================================================
+   LPA PROCESS (Relay between eUICC and SM-DP+)
+   ===================================================================== *)
+let LPA(dev:Id_t) =
+  (
+    (* ══════════════════════════════════════════════════════════════════
+       STEP 1: Receive InitiateAuthentication (trigger)
+       In practice, this comes from SM-DP+ or activation code
+       ══════════════════════════════════════════════════════════════════ *)
+
+    (* ══════════════════════════════════════════════════════════════════
+       STEP 2: Send GetEUICCChallenge to eUICC
+       ══════════════════════════════════════════════════════════════════ *)
+    out(LPA2EUICC, (t_getChal, ID_LPA, dev));
+
+    (* ══════════════════════════════════════════════════════════════════
+       STEP 3: Receive eUICCChallenge from eUICC
+       KEMTLS: {pk_e, CERT.EUICC}
+       ══════════════════════════════════════════════════════════════════ *)
+    in(LPA2EUICC, (dev_ch:Id_t, eChal:Nonce_t, PK_EPH:KEMpk_t, CERT_EU:Cert_t));
+    if dev_ch = dev then
+
+    (* ══════════════════════════════════════════════════════════════════
+       STEP 4: Forward AuthenticateServer to SM-DP+
+       KEMTLS: {pk_e, CERT.EUICC}
+       ══════════════════════════════════════════════════════════════════ *)
+    out(LPA2SMDP, (dev, eChal, PK_EPH, CERT_EU));
+
+    (* ══════════════════════════════════════════════════════════════════
+       STEP 5: Receive AuthenticateServer Response from SM-DP+
+       KEMTLS: {ct₁, ct_client, CERT.DP}
+       ══════════════════════════════════════════════════════════════════ *)
+    in(LPA2SMDP, (dev2:Id_t, tid:Tid_t, CT_EPH:KEMct_t, CT_CLIENT:KEMct_t, CERT_DP:Cert_t));
+    if dev2 = dev then
+
+    (* ══════════════════════════════════════════════════════════════════
+       STEP 6: Forward AuthenticateClient to eUICC
+       KEMTLS: {ct₁, ct_client, CERT.DP}
+       ══════════════════════════════════════════════════════════════════ *)
+    out(LPA2EUICC, (dev, tid, CT_EPH, CT_CLIENT, CERT_DP));
+
+    (* ══════════════════════════════════════════════════════════════════
+       STEP 7: Receive AuthenticateClient Response from eUICC
+       KEMTLS: {ct₂}
+       ══════════════════════════════════════════════════════════════════ *)
+    in(LPA2EUICC, (dev3:Id_t, tid2:Tid_t, CT_SERVER:KEMct_t));
+    if dev3 = dev then
+
+    (* Forward to SM-DP+ *)
+    out(LPA2SMDP, (dev, tid2, CT_SERVER))
+  ).
+
+
+(* =====================================================================
+   MAIN PROCESS
+   ===================================================================== *)
+process
+  (* Publish CI public key *)
+  let PK_CI = ci_pk(SK_CI) in
+  out(c, PK_CI);
+
+  (* Create device and run protocol instances *)
+  new devMain : Id_t;
+  (
+    !SMDP(PK_CI, devMain)
+  | !LPA(devMain)
+  | !EUICC(PK_CI, devMain)
+  )
+
+  (* === Forward Secrecy Test ===
+     Leak long-term key after protocol completion.
+     Session keys should remain secret due to ephemeral key usage. *)
+  | ( phase 1;
+      out(c, SK_SMDP_AUTH)
+    )

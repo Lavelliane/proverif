@@ -1,0 +1,546 @@
+(* =====================================================================
+   SGP.22 Consumer eSIM Provisioning - KEMTLS Authentication
+   
+   Replaces ECDSA signature-based ES9+ authentication with KEMTLS-style
+   KEM operations. LPA↔SM-DP+ channel is PUBLIC (no TLS required).
+   
+   Security Properties:
+   - Mutual authentication via implicit KEM-based auth
+   - Forward secrecy via ephemeral KEM
+   - Explicit authentication via Finished messages
+   - Replay protection via fresh challenges
+   
+   Based on: KEMTLS (Schwabe, Stebila, Wiggers - CCS 2020)
+   Original SGP.22 Auth ProVerif model: Yongho Ko
+   Modified for KEMTLS Support: Jhury Kevin Lastre
+   
+   Protocol Flow:
+   ┌─────────┐              ┌─────┐              ┌───────┐
+   │ SM-DP+  │              │ LPA │              │ eUICC │
+   └────┬────┘              └──┬──┘              └───┬───┘
+        │                      │  GetChallenge      │
+        │                      │───────────────────>│
+        │                      │                    │ gen (pk_e, sk_e)
+        │                      │  eChal, pk_e,      │
+        │                      │  CERT.EU           │
+        │                      │<───────────────────│
+        │  eChal, pk_e,        │                    │
+        │  CERT.EU             │ [PUBLIC CHANNEL]   │
+        │<─────────────────────│                    │
+        │                      │                    │
+        │ Verify CERT.EU       │                    │
+        │ ct_e ← Encap(pk_e)   │                    │
+        │ ct_c ← Encap(pk_eu)  │                    │
+        │                      │                    │
+        │  tid, sChal, ct_e,   │                    │
+        │  ct_c, CERT.DP       │                    │
+        │─────────────────────>│                    │
+        │                      │  tid, sChal, ct_e, │
+        │                      │  ct_c, CERT.DP     │
+        │                      │───────────────────>│
+        │                      │                    │ Verify CERT.DP
+        │                      │                    │ ss_e ← Decap(ct_e)
+        │                      │                    │ ss_c ← Decap(ct_c)
+        │                      │                    │ ct_s ← Encap(pk_dp)
+        │                      │                    │ K ← KDF(ss_e||ss_c||ss_s)
+        │                      │  ct_s, Finished_U  │
+        │                      │<───────────────────│
+        │  ct_s, Finished_U    │                    │
+        │<─────────────────────│                    │
+        │                      │                    │
+        │ ss_s ← Decap(ct_s)   │                    │
+        │ K ← KDF(...)         │                    │
+        │ Verify Finished_U    │                    │
+        │                      │                    │
+        │  Finished_S          │                    │
+        │─────────────────────>│                    │
+        │                      │  Finished_S        │
+        │                      │───────────────────>│
+        │                      │                    │ Verify Finished_S
+        │                      │  ACK               │
+        │                      │<───────────────────│
+        │  ACK                 │                    │
+        │<─────────────────────│                    │
+        
+   ===================================================================== *)
+
+
+(* =====================================================================
+   CHANNELS
+   ===================================================================== *)
+free c         : channel.           (* Public: certificates only *)
+free LPA2EUICC : channel [private]. (* Local LPA ↔ eUICC interface *)
+free LPA2SMDP  : channel.           (* PUBLIC: No TLS protection *)
+
+
+(* =====================================================================
+   DATA TYPES
+   ===================================================================== *)
+type Id_t.          (* Entity identifier *)
+type Tid_t.         (* Transaction ID *)
+type Nonce_t.       (* Challenges *)
+type Cert_t.        (* Certificates *)
+type Tag_t.         (* Role tags *)
+
+(* KEM types *)
+type KEMsk_t.       (* KEM secret key *)
+type KEMpk_t.       (* KEM public key *)
+type KEMct_t.       (* KEM ciphertext *)
+type KEMss_t.       (* KEM shared secret *)
+
+(* Derived key types *)
+type MasterKey_t.   (* Master session key *)
+type FinKey_t.      (* Key for Finished messages *)
+type AppKey_t.      (* Application key (KEK, KM) *)
+
+(* Protocol message types *)
+type Transcript_t.  (* Handshake transcript *)
+type Finished_t.    (* Finished message (MAC) *)
+type Ack_t.         (* Acknowledgment *)
+
+(* CI signing key type *)
+type CIsk_t.
+
+
+(* =====================================================================
+   CONSTANTS
+   ===================================================================== *)
+(* Entity identifiers *)
+const ID_SMDP   : Id_t.
+const ID_LPA    : Id_t.
+const ID_EUICC  : Id_t.
+
+(* Role tags for certificates *)
+const tag_dp    : Tag_t.  (* SM-DP+ *)
+const tag_eu    : Tag_t.  (* eUICC *)
+
+(* Message tag *)
+const t_getChal : Tag_t.
+
+(* Root CI secret key (for certificate issuance) *)
+const SK_CI : CIsk_t [private].
+
+(* SM-DP+ long-term KEM secret key *)
+const SK_SMDP_AUTH : KEMsk_t [private].
+
+
+(* =====================================================================
+   CRYPTOGRAPHIC PRIMITIVES
+   ===================================================================== *)
+
+(* ----- Certificate Infrastructure ----- *)
+(* CI public key derivation *)
+fun ci_pk(CIsk_t) : CIsk_t.
+
+(* Certificate: binds (identity, KEM public key, role) signed by CI *)
+fun make_cert(Id_t, KEMpk_t, Tag_t, CIsk_t) : Cert_t.
+
+(* Certificate verification returns (id, pk, role) if valid *)
+reduc forall id:Id_t, pk:KEMpk_t, role:Tag_t, sk:CIsk_t;
+  verify_cert(make_cert(id, pk, role, sk), ci_pk(sk)) = (id, pk, role).
+
+(* Helper to issue certificate *)
+letfun issue_cert(id:Id_t, pk:KEMpk_t, role:Tag_t) =
+  make_cert(id, pk, role, SK_CI).
+
+
+(* ----- KEM Operations ----- *)
+(* Public key generation *)
+fun kem_pk(KEMsk_t) : KEMpk_t.
+
+(* Encapsulation with explicit randomness *)
+(* Returns ciphertext *)
+fun kem_encap_ct(KEMpk_t, Nonce_t) : KEMct_t.
+(* Returns shared secret *)
+fun kem_encap_ss(KEMpk_t, Nonce_t) : KEMss_t.
+
+(* Decapsulation: recovers same shared secret *)
+reduc forall sk:KEMsk_t, r:Nonce_t;
+  kem_decaps(kem_encap_ct(kem_pk(sk), r), sk) = kem_encap_ss(kem_pk(sk), r).
+
+
+(* ----- Transcript Construction ----- *)
+(* Transcript binds all protocol messages and identities *)
+fun make_transcript(
+  Nonce_t,    (* eUICC challenge *)
+  Nonce_t,    (* Server challenge *)
+  Tid_t,      (* Transaction ID *)
+  KEMpk_t,    (* Ephemeral public key *)
+  KEMct_t,    (* Ephemeral ciphertext *)
+  KEMct_t,    (* Client auth ciphertext *)
+  KEMct_t,    (* Server auth ciphertext *)
+  Id_t,       (* eUICC identity *)
+  Id_t        (* SM-DP+ identity *)
+) : Transcript_t.
+
+
+(* ----- Key Derivation ----- *)
+(* KEMTLS-style KDF combining three shared secrets with transcript *)
+fun kemtls_kdf(KEMss_t, KEMss_t, KEMss_t, Transcript_t) : MasterKey_t.
+
+(* Extract specific keys from master key *)
+fun get_fin_key_client(MasterKey_t) : FinKey_t [data].
+fun get_fin_key_server(MasterKey_t) : FinKey_t [data].
+fun get_app_key(MasterKey_t) : AppKey_t [data].
+
+
+(* ----- Finished Messages ----- *)
+(* MAC over transcript using finished key *)
+fun make_finished(FinKey_t, Transcript_t, Id_t) : Finished_t.
+
+reduc forall k:FinKey_t, tr:Transcript_t, id:Id_t;
+  verify_finished(make_finished(k, tr, id), k, tr, id) = true.
+
+
+(* ----- Acknowledgment ----- *)
+fun make_ack(FinKey_t, Transcript_t) : Ack_t.
+
+reduc forall k:FinKey_t, tr:Transcript_t;
+  verify_ack(make_ack(k, tr), k, tr) = true.
+
+
+(* =====================================================================
+   EVENTS
+   ===================================================================== *)
+(* Protocol flow events *)
+event SMDP_BEGIN(Id_t, Tid_t).        (* SM-DP+ starts session *)
+event EUICC_AUTH_OK(Id_t, Tid_t).     (* eUICC authenticates server *)
+event SMDP_AUTH_OK(Id_t, Tid_t).      (* SM-DP+ authenticates client *)
+
+(* Key establishment events *)
+event EUICC_KEY(Id_t, Tid_t, MasterKey_t).
+event SMDP_KEY(Id_t, Tid_t, MasterKey_t).
+
+(* Key secrecy tracking *)
+event EUICC_APP_KEY(AppKey_t).
+event SMDP_APP_KEY(AppKey_t).
+
+
+(* =====================================================================
+   SECURITY QUERIES
+   ===================================================================== *)
+
+(* ----- Mutual Authentication ----- *)
+
+(* Q1: If eUICC completes auth, SM-DP+ must have started that session *)
+query dev:Id_t, tid:Tid_t;
+  inj-event(EUICC_AUTH_OK(dev, tid)) ==> inj-event(SMDP_BEGIN(dev, tid)).
+
+(* Q2: If SM-DP+ completes auth, eUICC must have completed first *)
+query dev:Id_t, tid:Tid_t;
+  inj-event(SMDP_AUTH_OK(dev, tid)) ==> inj-event(EUICC_AUTH_OK(dev, tid)).
+
+
+(* ----- Key Agreement ----- *)
+
+(* Q3: Both parties derive the same master key *)
+query dev:Id_t, tid:Tid_t, k:MasterKey_t;
+  event(SMDP_KEY(dev, tid, k)) ==> event(EUICC_KEY(dev, tid, k)).
+
+(* Q4: Injective key agreement (no key reuse across sessions) *)
+query dev:Id_t, tid:Tid_t, k:MasterKey_t;
+  inj-event(SMDP_KEY(dev, tid, k)) ==> inj-event(EUICC_KEY(dev, tid, k)).
+
+
+(* ----- Key Secrecy ----- *)
+
+(* Q5: Application keys derived by eUICC are secret *)
+query k:AppKey_t; 
+  attacker(k) && event(EUICC_APP_KEY(k)).
+
+(* Q6: Application keys derived by SM-DP+ are secret *)
+query k:AppKey_t; 
+  attacker(k) && event(SMDP_APP_KEY(k)).
+
+
+(* ----- Forward Secrecy ----- *)
+(* Tested via phase 1 key leakage - see main process *)
+
+
+(* =====================================================================
+   eUICC PROCESS
+   ===================================================================== *)
+let EUICC(PK_CI:CIsk_t, dev:Id_t) =
+  
+  (* === Long-term Identity Setup === *)
+  new SK_EUICC_AUTH : KEMsk_t;
+  let PK_EUICC_AUTH = kem_pk(SK_EUICC_AUTH) in
+  let CERT_EUICC = issue_cert(ID_EUICC, PK_EUICC_AUTH, tag_eu) in
+  
+  (* Publish certificate *)
+  out(c, CERT_EUICC);
+
+  (* === Per-Session Ephemeral Key === *)
+  new SK_EUICC_EPH : KEMsk_t;
+  let PK_EUICC_EPH = kem_pk(SK_EUICC_EPH) in
+
+  (
+    (* ══════════════════════════════════════════════════════════════════
+       STEP 1: Receive GetEUICCChallenge from LPA
+       ══════════════════════════════════════════════════════════════════ *)
+    in(LPA2EUICC, (=t_getChal, =ID_LPA, dev_in:Id_t));
+    if dev_in = dev then
+
+    (* Generate fresh challenge for replay protection *)
+    new eChal : Nonce_t;
+
+    (* ══════════════════════════════════════════════════════════════════
+       STEP 2: Send challenge response with ephemeral key
+       KEMTLS: {eChal, pk_e, CERT.EUICC}
+       ══════════════════════════════════════════════════════════════════ *)
+    out(LPA2EUICC, (dev, eChal, PK_EUICC_EPH, CERT_EUICC));
+
+    (* ══════════════════════════════════════════════════════════════════
+       STEP 5: Receive AuthenticateClient from LPA
+       KEMTLS: {tid, sChal, ct_e, ct_c, CERT.DP}
+       ══════════════════════════════════════════════════════════════════ *)
+    in(LPA2EUICC,
+       (=dev,
+        tid       : Tid_t,      (* Transaction ID from server *)
+        sChal     : Nonce_t,    (* Server challenge *)
+        CT_EPH    : KEMct_t,    (* ct_e = Encap(pk_e) *)
+        CT_CLIENT : KEMct_t,    (* ct_c = Encap(pk_euicc) *)
+        CERT_SMDP : Cert_t));   (* Server certificate *)
+
+    (* Verify SM-DP+ certificate *)
+    let (=ID_SMDP, PK_SMDP_AUTH:KEMpk_t, =tag_dp) = 
+      verify_cert(CERT_SMDP, PK_CI) in
+
+    (* ══════════════════════════════════════════════════════════════════
+       KEMTLS Key Agreement (eUICC side)
+       ══════════════════════════════════════════════════════════════════ *)
+    
+    (* (a) Decapsulate ephemeral: ss_e = Decap(ct_e, sk_e) *)
+    (*     Provides forward secrecy *)
+    let SS_EPH = kem_decaps(CT_EPH, SK_EUICC_EPH) in
+
+    (* (b) Decapsulate client auth: ss_c = Decap(ct_c, sk_euicc) *)
+    (*     Only real eUICC can do this - proves our identity *)
+    let SS_CLIENT = kem_decaps(CT_CLIENT, SK_EUICC_AUTH) in
+
+    (* (c) Encapsulate to server's static key: ct_s = Encap(pk_dp) *)
+    (*     Provides server authentication *)
+    new r_server : Nonce_t;
+    let CT_SERVER = kem_encap_ct(PK_SMDP_AUTH, r_server) in
+    let SS_SERVER = kem_encap_ss(PK_SMDP_AUTH, r_server) in
+
+    (* (d) Build transcript binding ALL exchanged data *)
+    let transcript = make_transcript(
+      eChal, sChal, tid,
+      PK_EUICC_EPH, CT_EPH, CT_CLIENT, CT_SERVER,
+      ID_EUICC, ID_SMDP
+    ) in
+
+    (* (e) Derive master key *)
+    let master_key = kemtls_kdf(SS_EPH, SS_CLIENT, SS_SERVER, transcript) in
+    let fin_key_client = get_fin_key_client(master_key) in
+    let fin_key_server = get_fin_key_server(master_key) in
+    let app_key = get_app_key(master_key) in
+
+    (* Create client Finished message *)
+    let finished_client = make_finished(fin_key_client, transcript, ID_EUICC) in
+
+    (* Record key derivation (before explicit auth) *)
+    event EUICC_KEY(dev, tid, master_key);
+
+    (* ══════════════════════════════════════════════════════════════════
+       STEP 6: Send server auth ciphertext and Finished
+       KEMTLS: {ct_s, Finished_U}
+       ══════════════════════════════════════════════════════════════════ *)
+    out(LPA2EUICC, (dev, tid, CT_SERVER, finished_client));
+
+    (* ══════════════════════════════════════════════════════════════════
+       STEP 9: Receive server Finished
+       ══════════════════════════════════════════════════════════════════ *)
+    in(LPA2EUICC, (=dev, =tid, finished_server:Finished_t));
+
+    (* Verify server's Finished message *)
+    if verify_finished(finished_server, fin_key_server, transcript, ID_SMDP) = true then
+
+    (* Server explicitly authenticated - only NOW claim key secrecy *)
+    event EUICC_AUTH_OK(dev, tid);
+    event EUICC_APP_KEY(app_key);
+
+    (* ══════════════════════════════════════════════════════════════════
+       STEP 10: Send acknowledgment
+       ══════════════════════════════════════════════════════════════════ *)
+    let ack = make_ack(fin_key_client, transcript) in
+    out(LPA2EUICC, (dev, tid, ack))
+  ).
+
+
+(* =====================================================================
+   SM-DP+ PROCESS  
+   ===================================================================== *)
+let SMDP(PK_CI:CIsk_t, dev:Id_t) =
+
+  (* === Long-term Identity Setup === *)
+  let PK_SMDP_AUTH = kem_pk(SK_SMDP_AUTH) in
+  let CERT_SMDP = issue_cert(ID_SMDP, PK_SMDP_AUTH, tag_dp) in
+  
+  (* Publish certificate *)
+  out(c, CERT_SMDP);
+
+  (
+    (* ══════════════════════════════════════════════════════════════════
+       STEP 3: Receive client hello via PUBLIC channel
+       KEMTLS: {eChal, pk_e, CERT.EUICC}
+       ══════════════════════════════════════════════════════════════════ *)
+    in(LPA2SMDP,
+       (devS         : Id_t,
+        eChalS       : Nonce_t,
+        PK_EUICC_EPH : KEMpk_t,
+        CERT_EUICC   : Cert_t));
+    if devS = dev then
+
+    (* Verify eUICC certificate *)
+    let (=ID_EUICC, PK_EUICC_AUTH:KEMpk_t, =tag_eu) = 
+      verify_cert(CERT_EUICC, PK_CI) in
+
+    (* Generate session parameters *)
+    new tid : Tid_t;
+    new sChal : Nonce_t;
+    
+    event SMDP_BEGIN(devS, tid);
+
+    (* ══════════════════════════════════════════════════════════════════
+       KEMTLS Key Agreement (SM-DP+ side - first part)
+       ══════════════════════════════════════════════════════════════════ *)
+    
+    (* (a) Encapsulate to ephemeral key: ct_e = Encap(pk_e) *)
+    (*     Provides forward secrecy *)
+    new r_eph : Nonce_t;
+    let CT_EPH = kem_encap_ct(PK_EUICC_EPH, r_eph) in
+    let SS_EPH = kem_encap_ss(PK_EUICC_EPH, r_eph) in
+
+    (* (b) Encapsulate to client's static key: ct_c = Encap(pk_euicc) *)
+    (*     Provides client authentication - only real eUICC can decapsulate *)
+    new r_client : Nonce_t;
+    let CT_CLIENT = kem_encap_ct(PK_EUICC_AUTH, r_client) in
+    let SS_CLIENT = kem_encap_ss(PK_EUICC_AUTH, r_client) in
+
+    (* ══════════════════════════════════════════════════════════════════
+       STEP 4: Send server response via PUBLIC channel
+       KEMTLS: {tid, sChal, ct_e, ct_c, CERT.DP}
+       ══════════════════════════════════════════════════════════════════ *)
+    out(LPA2SMDP, (devS, tid, sChal, CT_EPH, CT_CLIENT, CERT_SMDP));
+
+    (* ══════════════════════════════════════════════════════════════════
+       STEP 7: Receive client auth ciphertext and Finished
+       KEMTLS: {ct_s, Finished_U}
+       ══════════════════════════════════════════════════════════════════ *)
+    in(LPA2SMDP, (=devS, =tid, CT_SERVER:KEMct_t, finished_client:Finished_t));
+
+    (* ══════════════════════════════════════════════════════════════════
+       KEMTLS Key Agreement (SM-DP+ side - completion)
+       ══════════════════════════════════════════════════════════════════ *)
+    
+    (* (c) Decapsulate server auth: ss_s = Decap(ct_s, sk_dp) *)
+    (*     Only real SM-DP+ can do this - proves server identity to client *)
+    let SS_SERVER = kem_decaps(CT_SERVER, SK_SMDP_AUTH) in
+
+    (* (d) Build transcript (must match client's) *)
+    let transcript = make_transcript(
+      eChalS, sChal, tid,
+      PK_EUICC_EPH, CT_EPH, CT_CLIENT, CT_SERVER,
+      ID_EUICC, ID_SMDP
+    ) in
+
+    (* (e) Derive master key *)
+    let master_key = kemtls_kdf(SS_EPH, SS_CLIENT, SS_SERVER, transcript) in
+    let fin_key_client = get_fin_key_client(master_key) in
+    let fin_key_server = get_fin_key_server(master_key) in
+    let app_key = get_app_key(master_key) in
+
+    (* Verify client's Finished message *)
+    if verify_finished(finished_client, fin_key_client, transcript, ID_EUICC) = true then
+
+    (* Record key derivation *)
+    event SMDP_KEY(devS, tid, master_key);
+    event SMDP_APP_KEY(app_key);
+
+    (* ══════════════════════════════════════════════════════════════════
+       STEP 8: Send server Finished via PUBLIC channel
+       ══════════════════════════════════════════════════════════════════ *)
+    let finished_server = make_finished(fin_key_server, transcript, ID_SMDP) in
+    out(LPA2SMDP, (devS, tid, finished_server));
+
+    (* ══════════════════════════════════════════════════════════════════
+       STEP 11: Receive acknowledgment
+       ══════════════════════════════════════════════════════════════════ *)
+    in(LPA2SMDP, (=devS, =tid, ack:Ack_t));
+
+    if verify_ack(ack, fin_key_client, transcript) = true then
+
+    (* Client explicitly authenticated *)
+    event SMDP_AUTH_OK(dev, tid)
+  ).
+
+
+(* =====================================================================
+   LPA PROCESS (Untrusted Relay over Public Channel)
+   ===================================================================== *)
+let LPA(dev:Id_t) =
+  (
+    (* Step 1: Request challenge from eUICC *)
+    out(LPA2EUICC, (t_getChal, ID_LPA, dev));
+
+    (* Step 2: Receive challenge response from eUICC *)
+    in(LPA2EUICC, (=dev, eChal:Nonce_t, PK_EPH:KEMpk_t, CERT_EU:Cert_t));
+
+    (* Step 3: Forward to SM-DP+ via PUBLIC channel *)
+    out(LPA2SMDP, (dev, eChal, PK_EPH, CERT_EU));
+
+    (* Step 4: Receive server response via PUBLIC channel *)
+    in(LPA2SMDP, (=dev, tid:Tid_t, sChal:Nonce_t, 
+                  CT_EPH:KEMct_t, CT_CLIENT:KEMct_t, CERT_DP:Cert_t));
+
+    (* Step 5: Forward to eUICC *)
+    out(LPA2EUICC, (dev, tid, sChal, CT_EPH, CT_CLIENT, CERT_DP));
+
+    (* Step 6: Receive client auth from eUICC *)
+    in(LPA2EUICC, (=dev, =tid, CT_SERVER:KEMct_t, finished_client:Finished_t));
+
+    (* Step 7: Forward to SM-DP+ via PUBLIC channel *)
+    out(LPA2SMDP, (dev, tid, CT_SERVER, finished_client));
+
+    (* Step 8: Receive server Finished via PUBLIC channel *)
+    in(LPA2SMDP, (=dev, =tid, finished_server:Finished_t));
+
+    (* Step 9: Forward to eUICC *)
+    out(LPA2EUICC, (dev, tid, finished_server));
+
+    (* Step 10: Receive ack from eUICC *)
+    in(LPA2EUICC, (=dev, =tid, ack:Ack_t));
+
+    (* Step 11: Forward to SM-DP+ via PUBLIC channel *)
+    out(LPA2SMDP, (dev, tid, ack))
+  ).
+
+
+(* =====================================================================
+   MAIN PROCESS
+   ===================================================================== *)
+process
+  (* Distribute CI public key *)
+  let PK_CI = ci_pk(SK_CI) in
+  out(c, PK_CI);
+
+  (* Create device identity and run protocol *)
+  new devMain : Id_t;
+  (
+    !SMDP(PK_CI, devMain)
+  | !LPA(devMain)
+  | !EUICC(PK_CI, devMain)
+  )
+
+  (* ═══════════════════════════════════════════════════════════════════
+     FORWARD SECRECY TEST
+     
+     After phase 0 completes, leak the SM-DP+ long-term key.
+     Sessions established in phase 0 should remain secure because
+     they used ephemeral KEM keys for forward secrecy.
+     ═══════════════════════════════════════════════════════════════════ *)
+  | ( phase 1;
+      out(c, SK_SMDP_AUTH)
+    )

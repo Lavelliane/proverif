@@ -1,0 +1,295 @@
+(* =====================================================================
+   SGP.22 eSIM Provisioning - KEMTLS Full Model
+   
+   This model demonstrates:
+   - Rule generation (200+, 400+, 600+ rules inserted)
+   - AEAD encryption, MACs, key derivation
+   - Realistic channel assumptions
+   
+   Channel Model:
+   - c_local: eUICC <-> LPA (local device, private)
+   - c_net: LPA <-> SM-DP+ (TLS protected, private in honest case)
+   - c_pub: Public channel for certificates only
+   ===================================================================== *)
+
+set ignoreTypes = false.
+
+(* ===== CHANNELS ===== *)
+free c_pub   : channel.           (* Public: certificates only *)
+free c_local : channel [private]. (* Local device channel *)
+free c_net   : channel [private]. (* TLS-protected network channel *)
+
+
+(* ===== BASIC TYPES ===== *)
+type Id_t.
+type Tid_t.
+type Nonce_t.
+type Cert_t.
+type Tag_t.
+type key.
+
+type MLKEMsk_t.
+type MLKEMpk_t.
+type MLKEMct_t.
+type MLKEMss_t.
+
+type ECDHsk_t.
+type ECDHpk_t.
+
+
+(* ===== CONSTANTS ===== *)
+const ID_SMDP   : Id_t.
+const ID_EUICC  : Id_t.
+const tag_dp    : Tag_t.
+const tag_eu    : Tag_t.
+
+const SK_CI : key [private].
+const SK_SMDP_AUTH : MLKEMsk_t [private].
+
+free profile_data : bitstring [private].
+free profile_iccid : bitstring [private].
+
+
+(* ===== CRYPTO PRIMITIVES ===== *)
+fun aead_enc(key, bitstring, bitstring): bitstring.
+reduc forall k: key, ad: bitstring, pt: bitstring;
+  aead_dec(k, ad, aead_enc(k, ad, pt)) = pt.
+
+fun hmac(key, bitstring): bitstring.
+fun hash(bitstring): bitstring.
+
+fun b2k(bitstring): key [data, typeConverter].
+fun ss2k(MLKEMss_t): key [data, typeConverter].
+
+
+(* ===== CERTIFICATES ===== *)
+fun ci_pk(key) : key.
+
+fun kem_cert(Id_t, MLKEMpk_t, Tag_t, key) : Cert_t.
+reduc forall id: Id_t, Pk: MLKEMpk_t, role: Tag_t, Sk: key;
+  check_kem_cert(kem_cert(id, Pk, role, Sk), ci_pk(Sk)) = (id, Pk, role).
+
+letfun kem_certificate(id:Id_t, Pk:MLKEMpk_t, role:Tag_t) =
+  kem_cert(id, Pk, role, SK_CI).
+
+
+(* ===== ML-KEM ===== *)
+fun mlkem_pk(MLKEMsk_t) : MLKEMpk_t.
+fun mlkem_encaps(MLKEMpk_t) : bitstring.
+fun mlkem_get_ct(bitstring) : MLKEMct_t [data].
+fun mlkem_get_ss(bitstring) : MLKEMss_t [data].
+
+reduc forall sk : MLKEMsk_t;
+  mlkem_decaps(mlkem_get_ct(mlkem_encaps(mlkem_pk(sk))), sk) = 
+    mlkem_get_ss(mlkem_encaps(mlkem_pk(sk))).
+
+
+(* ===== ECDH ===== *)
+fun ecdh_pk(ECDHsk_t) : ECDHpk_t.
+fun ecdh_shared(ECDHsk_t, ECDHpk_t) : bitstring.
+
+equation forall ska : ECDHsk_t, skb : ECDHsk_t;
+  ecdh_shared(ska, ecdh_pk(skb)) = ecdh_shared(skb, ecdh_pk(ska)).
+
+
+(* ===== KEY DERIVATION ===== *)
+fun kdf_hs(bitstring, MLKEMss_t, MLKEMss_t, bitstring): key.
+fun kdf_fin(bitstring, MLKEMss_t, MLKEMss_t, bitstring): key.
+fun kdf_app(bitstring, MLKEMss_t, MLKEMss_t, MLKEMss_t, bitstring): key.
+
+
+(* ===== EVENTS ===== *)
+event S_BEGIN(Id_t, Tid_t).
+event U_AUTH(Id_t, Tid_t).
+event S_AUTH(Id_t, Tid_t).
+event U_RECV_PROFILE(Id_t, Tid_t, bitstring).
+event S_SEND_PROFILE(Id_t, Tid_t, bitstring).
+event U_KEY(Id_t, Tid_t, key).
+event S_KEY(Id_t, Tid_t, key).
+
+
+(* ===== QUERIES ===== *)
+
+(* Mutual Authentication *)
+query U:Id_t, tid:Tid_t;
+  inj-event(U_AUTH(U, tid)) ==> inj-event(S_BEGIN(U, tid)).
+
+query U:Id_t, tid:Tid_t;
+  inj-event(S_AUTH(U, tid)) ==> inj-event(U_AUTH(U, tid)).
+
+(* Profile Secrecy *)
+query attacker(profile_data).
+query attacker(profile_iccid).
+
+(* Profile Delivery Integrity *)
+query dev:Id_t, tid:Tid_t, p:bitstring;
+  inj-event(U_RECV_PROFILE(dev, tid, p)) ==> inj-event(S_SEND_PROFILE(dev, tid, p)).
+
+(* Key Agreement *)
+query dev:Id_t, tid:Tid_t, k:key;
+  event(S_KEY(dev, tid, k)) ==> event(U_KEY(dev, tid, k)).
+
+
+(* ===== eUICC PROCESS ===== *)
+let EUICC(PK_CI:key, dev:Id_t) =
+  (* Long-term KEM identity *)
+  new SK_EUICC_AUTH : MLKEMsk_t;
+  let PK_EUICC_AUTH = mlkem_pk(SK_EUICC_AUTH) in
+  let Cert_EUICC = kem_certificate(ID_EUICC, PK_EUICC_AUTH, tag_eu) in
+  out(c_pub, Cert_EUICC);
+
+  (* Ephemeral keys *)
+  new SK_EUICC_ECDH : ECDHsk_t;
+  let PK_EUICC_ECDH = ecdh_pk(SK_EUICC_ECDH) in
+  new SK_EUICC_EPH : MLKEMsk_t;
+  let PK_EUICC_EPH = mlkem_pk(SK_EUICC_EPH) in
+
+  (* MSG 1: Send to LPA *)
+  new eChal:Nonce_t;
+  out(c_local, (dev, eChal, PK_EUICC_ECDH, PK_EUICC_EPH, Cert_EUICC));
+
+  (* MSG 2: Receive from LPA *)
+  in(c_local, (tid_r: Tid_t, sChal_r: Nonce_t, Cert_SMDP: Cert_t,
+               PK_SMDP_ECDH: ECDHpk_t, CT_EPH: MLKEMct_t, CT_CLIENT: MLKEMct_t,
+               e_server_fin: bitstring));
+
+  let (=ID_SMDP, PK_SMDP_AUTH: MLKEMpk_t, =tag_dp) = check_kem_cert(Cert_SMDP, PK_CI) in
+
+  let Z_ECDH = ecdh_shared(SK_EUICC_ECDH, PK_SMDP_ECDH) in
+  let Z_EPH = mlkem_decaps(CT_EPH, SK_EUICC_EPH) in
+  let Z_CLIENT = mlkem_decaps(CT_CLIENT, SK_EUICC_AUTH) in
+
+  let encaps_s = mlkem_encaps(PK_SMDP_AUTH) in
+  let CT_SERVER = mlkem_get_ct(encaps_s) in
+  let Z_SERVER = mlkem_get_ss(encaps_s) in
+
+  let tr1 = hash((dev, eChal, tid_r, sChal_r)) in
+  let hs_key = kdf_hs(Z_ECDH, Z_EPH, Z_CLIENT, tr1) in
+  let fin_key = kdf_fin(Z_ECDH, Z_EPH, Z_CLIENT, tr1) in
+
+  let server_fin = aead_dec(hs_key, tr1, e_server_fin) in
+  if server_fin = hmac(fin_key, tr1) then
+  (
+    event U_AUTH(dev, tid_r);
+
+    let tr2 = hash((tr1, server_fin)) in
+    let hs_key_c = kdf_hs(Z_ECDH, Z_EPH, Z_CLIENT, tr2) in
+    let fin_key_c = kdf_fin(Z_ECDH, Z_EPH, Z_CLIENT, tr2) in
+    let client_fin = hmac(fin_key_c, tr2) in
+    let e_client_fin = aead_enc(hs_key_c, tr2, client_fin) in
+
+    (* MSG 3: Send to LPA *)
+    out(c_local, (tid_r, CT_SERVER, e_client_fin));
+
+    (* MSG 4: Receive profile *)
+    in(c_local, (=tid_r, e_profile: bitstring));
+    
+    let tr3 = hash((tr2, client_fin, CT_SERVER)) in
+    let app_key = kdf_app(Z_ECDH, Z_EPH, Z_SERVER, Z_CLIENT, tr3) in
+    
+    event U_KEY(dev, tid_r, app_key);
+    
+    let recv_profile = aead_dec(app_key, tr3, e_profile) in
+    event U_RECV_PROFILE(dev, tid_r, recv_profile)
+  ).
+
+
+(* ===== SM-DP+ PROCESS ===== *)
+let SMDP(PK_CI:key, dev:Id_t) =
+  let PK_SMDP_AUTH = mlkem_pk(SK_SMDP_AUTH) in
+  let Cert_SMDP = kem_certificate(ID_SMDP, PK_SMDP_AUTH, tag_dp) in
+  out(c_pub, Cert_SMDP);
+
+  new SK_SMDP_ECDH : ECDHsk_t;
+  let PK_SMDP_ECDH = ecdh_pk(SK_SMDP_ECDH) in
+
+  (* MSG 1: Receive from network *)
+  in(c_net, (=dev, eChalS: Nonce_t, PK_EUICC_ECDH: ECDHpk_t, 
+             PK_EUICC_EPH: MLKEMpk_t, Cert_EUICC: Cert_t));
+
+  let (=ID_EUICC, PK_EUICC_AUTH: MLKEMpk_t, =tag_eu) = check_kem_cert(Cert_EUICC, PK_CI) in
+
+  new tid : Tid_t;
+  new sChal : Nonce_t;
+  event S_BEGIN(dev, tid);
+
+  let Z_ECDH = ecdh_shared(SK_SMDP_ECDH, PK_EUICC_ECDH) in
+
+  let encaps_e = mlkem_encaps(PK_EUICC_EPH) in
+  let CT_EPH = mlkem_get_ct(encaps_e) in
+  let Z_EPH = mlkem_get_ss(encaps_e) in
+
+  let encaps_c = mlkem_encaps(PK_EUICC_AUTH) in
+  let CT_CLIENT = mlkem_get_ct(encaps_c) in
+  let Z_CLIENT = mlkem_get_ss(encaps_c) in
+
+  let tr1 = hash((dev, eChalS, tid, sChal)) in
+  let hs_key = kdf_hs(Z_ECDH, Z_EPH, Z_CLIENT, tr1) in
+  let fin_key = kdf_fin(Z_ECDH, Z_EPH, Z_CLIENT, tr1) in
+  let server_fin = hmac(fin_key, tr1) in
+  let e_server_fin = aead_enc(hs_key, tr1, server_fin) in
+
+  (* MSG 2: Send to network *)
+  out(c_net, (tid, sChal, Cert_SMDP, PK_SMDP_ECDH, CT_EPH, CT_CLIENT, e_server_fin));
+
+  (* MSG 3: Receive from network *)
+  in(c_net, (=tid, CT_SERVER: MLKEMct_t, e_client_fin: bitstring));
+
+  let Z_SERVER = mlkem_decaps(CT_SERVER, SK_SMDP_AUTH) in
+
+  let tr2 = hash((tr1, server_fin)) in
+  let hs_key_c = kdf_hs(Z_ECDH, Z_EPH, Z_CLIENT, tr2) in
+  let fin_key_c = kdf_fin(Z_ECDH, Z_EPH, Z_CLIENT, tr2) in
+  let client_fin = aead_dec(hs_key_c, tr2, e_client_fin) in
+
+  if client_fin = hmac(fin_key_c, tr2) then
+  (
+    event S_AUTH(dev, tid);
+
+    let tr3 = hash((tr2, client_fin, CT_SERVER)) in
+    let app_key = kdf_app(Z_ECDH, Z_EPH, Z_SERVER, Z_CLIENT, tr3) in
+    
+    event S_KEY(dev, tid, app_key);
+    
+    let e_profile = aead_enc(app_key, tr3, (profile_data, profile_iccid)) in
+    event S_SEND_PROFILE(dev, tid, (profile_data, profile_iccid));
+
+    (* MSG 4: Send profile *)
+    out(c_net, (tid, e_profile))
+  ).
+
+
+(* ===== LPA - RELAY PROCESS ===== *)
+let LPA(dev:Id_t) =
+  (* Forward eUICC -> SMDP *)
+  in(c_local, msg1:bitstring);
+  out(c_net, msg1);
+
+  (* Forward SMDP -> eUICC *)
+  in(c_net, msg2:bitstring);
+  out(c_local, msg2);
+
+  (* Forward eUICC -> SMDP *)
+  in(c_local, msg3:bitstring);
+  out(c_net, msg3);
+
+  (* Forward SMDP -> eUICC *)
+  in(c_net, msg4:bitstring);
+  out(c_local, msg4).
+
+
+(* ===== MAIN PROCESS ===== *)
+process
+  let PK_CI = ci_pk(SK_CI) in
+  out(c_pub, PK_CI);
+
+  new devMain:Id_t;
+  ( !SMDP(PK_CI, devMain)
+  | !LPA(devMain)
+  | !EUICC(PK_CI, devMain)
+  )
+  
+  (* Forward secrecy test *)
+  | ( phase 1;
+      out(c_pub, SK_SMDP_AUTH)
+    )
