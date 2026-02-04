@@ -1,0 +1,176 @@
+Process 0 (that is, the initial process):
+{1}let PK_CI: K_t = pk(SK_CI) in
+{2}out(c, PK_CI);
+{3}new devMain: Id_t;
+(
+    {4}!
+    {5}let dev: Id_t = devMain in
+    {6}let PK_DPauth: K_t = pk(SK_DPauth) in
+    {7}let id: Id_t = ID_SMDP in
+    {8}let role: Tag_t = tag_dp in
+    {9}let Cert_DPauth: Cert_t = signcert(id,PK_DPauth,role,SK_CI) in
+    {10}out(c, Cert_DPauth);
+    {11}in(LPA2SMDP, (devS: Id_t,eChalS: Nonce_t));
+    {12}if (devS = dev) then
+    {13}new tid: Tid_t;
+    {14}new sChal: Nonce_t;
+    {15}event SMDP_AUTH_BEGIN(devS,tid);
+    {16}let serverSigned: bitstring = mk_serverSigned1(tid,eChalS,sChal,ID_SMDP) in
+    {17}let serverSig: Sig_t = sign(serverSigned,SK_DPauth) in
+    {18}out(LPA2SMDP, (devS,serverSigned,serverSig,Cert_DPauth));
+    {19}in(LPA2SMDP, (devS2: Id_t,clientSigned: bitstring,clientSig: Sig_t,Cert_EUICC: Cert_t));
+    {20}if (devS2 = dev) then
+    {21}let (id_eu: Id_t,PK_EUICC: K_t,role_eu: Tag_t) = checkcert(Cert_EUICC,PK_CI) in
+    {22}let decoded_cli: bitstring = checksign(clientSig,PK_EUICC) in
+    {23}let mk_clientSigned1(tid2: Tid_t,sChal2: Nonce_t) = decoded_cli in
+    {24}if (tid2 = tid) then
+    {25}if (sChal2 = sChal) then
+    {26}event SMDP_AUTH_OK(dev,tid)
+) | (
+    {27}!
+    {28}let dev_1: Id_t = devMain in
+    {29}out(LPA2EUICC, (t_getChal,ID_LPA,dev_1));
+    {30}in(LPA2EUICC, (dev_ch: Id_t,eChal: Nonce_t));
+    {31}if (dev_ch = dev_1) then
+    {32}out(LPA2SMDP, (dev_1,eChal));
+    {33}in(LPA2SMDP, (dev2: Id_t,serverSigned_1: bitstring,serverSig_1: Sig_t,Cert_DPauth_1: Cert_t));
+    {34}if (dev2 = dev_1) then
+    {35}out(LPA2EUICC, (dev_1,serverSigned_1,serverSig_1,Cert_DPauth_1));
+    {36}in(LPA2EUICC, (dev3: Id_t,clientSigned_1: bitstring,clientSig_1: Sig_t,Cert_EUICC_1: Cert_t));
+    {37}if (dev3 = dev_1) then
+    {38}out(LPA2SMDP, (dev_1,clientSigned_1,clientSig_1,Cert_EUICC_1))
+) | (
+    {39}!
+    {40}let dev_2: Id_t = devMain in
+    {41}new SK_EUICC: K_t;
+    {42}let PK_EUICC_1: K_t = pk(SK_EUICC) in
+    {43}let id_1: Id_t = ID_EUICC in
+    {44}let role_1: Tag_t = tag_eu in
+    {45}let Cert_EUICC_2: Cert_t = signcert(id_1,PK_EUICC_1,role_1,SK_CI) in
+    {46}out(c, Cert_EUICC_2);
+    {47}in(LPA2EUICC, (=t_getChal,=ID_LPA,dev_in: Id_t));
+    {48}if (dev_in = dev_2) then
+    {49}new eChal_1: Nonce_t;
+    {50}out(LPA2EUICC, (dev_2,eChal_1));
+    {51}in(LPA2EUICC, (dev_srv: Id_t,serverSigned_2: bitstring,serverSig_2: Sig_t,Cert_DPauth_2: Cert_t));
+    {52}if (dev_srv = dev_2) then
+    {53}let (id_dp: Id_t,PK_DPauth_1: K_t,role_dp: Tag_t) = checkcert(Cert_DPauth_2,PK_CI) in
+    {54}let decoded_srv: bitstring = checksign(serverSig_2,PK_DPauth_1) in
+    {55}let mk_serverSigned1(tidU: Tid_t,eChalU: Nonce_t,sChalU: Nonce_t,smdpAddr: Id_t) = decoded_srv in
+    {56}if (eChalU = eChal_1) then
+    {57}if (smdpAddr = ID_SMDP) then
+    {58}event EUICC_AUTH_OK(dev_2,tidU);
+    {59}let clientSigned_2: bitstring = mk_clientSigned1(tidU,sChalU) in
+    {60}let clientSig_2: Sig_t = sign(clientSigned_2,SK_EUICC) in
+    {61}out(LPA2EUICC, (dev_2,clientSigned_2,clientSig_2,Cert_EUICC_2))
+)
+
+--  Process 1 (that is, process 0, with let moved downwards):
+{1}let PK_CI: K_t = pk(SK_CI) in
+{2}out(c, PK_CI);
+{3}new devMain: Id_t;
+(
+    {4}!
+    {8}let role: Tag_t = tag_dp in
+    {7}let id: Id_t = ID_SMDP in
+    {6}let PK_DPauth: K_t = pk(SK_DPauth) in
+    {9}let Cert_DPauth: Cert_t = signcert(id,PK_DPauth,role,SK_CI) in
+    {10}out(c, Cert_DPauth);
+    {11}in(LPA2SMDP, (devS: Id_t,eChalS: Nonce_t));
+    {5}let dev: Id_t = devMain in
+    {12}if (devS = dev) then
+    {13}new tid: Tid_t;
+    {14}new sChal: Nonce_t;
+    {15}event SMDP_AUTH_BEGIN(devS,tid);
+    {16}let serverSigned: bitstring = mk_serverSigned1(tid,eChalS,sChal,ID_SMDP) in
+    {17}let serverSig: Sig_t = sign(serverSigned,SK_DPauth) in
+    {18}out(LPA2SMDP, (devS,serverSigned,serverSig,Cert_DPauth));
+    {19}in(LPA2SMDP, (devS2: Id_t,clientSigned: bitstring,clientSig: Sig_t,Cert_EUICC: Cert_t));
+    {20}if (devS2 = dev) then
+    {21}let (id_eu: Id_t,PK_EUICC: K_t,role_eu: Tag_t) = checkcert(Cert_EUICC,PK_CI) in
+    {22}let decoded_cli: bitstring = checksign(clientSig,PK_EUICC) in
+    {23}let mk_clientSigned1(tid2: Tid_t,sChal2: Nonce_t) = decoded_cli in
+    {24}if (tid2 = tid) then
+    {25}if (sChal2 = sChal) then
+    {26}event SMDP_AUTH_OK(dev,tid)
+) | (
+    {27}!
+    {28}let dev_1: Id_t = devMain in
+    {29}out(LPA2EUICC, (t_getChal,ID_LPA,dev_1));
+    {30}in(LPA2EUICC, (dev_ch: Id_t,eChal: Nonce_t));
+    {31}if (dev_ch = dev_1) then
+    {32}out(LPA2SMDP, (dev_1,eChal));
+    {33}in(LPA2SMDP, (dev2: Id_t,serverSigned_1: bitstring,serverSig_1: Sig_t,Cert_DPauth_1: Cert_t));
+    {34}if (dev2 = dev_1) then
+    {35}out(LPA2EUICC, (dev_1,serverSigned_1,serverSig_1,Cert_DPauth_1));
+    {36}in(LPA2EUICC, (dev3: Id_t,clientSigned_1: bitstring,clientSig_1: Sig_t,Cert_EUICC_1: Cert_t));
+    {37}if (dev3 = dev_1) then
+    {38}out(LPA2SMDP, (dev_1,clientSigned_1,clientSig_1,Cert_EUICC_1))
+) | (
+    {39}!
+    {41}new SK_EUICC: K_t;
+    {44}let role_1: Tag_t = tag_eu in
+    {43}let id_1: Id_t = ID_EUICC in
+    {42}let PK_EUICC_1: K_t = pk(SK_EUICC) in
+    {45}let Cert_EUICC_2: Cert_t = signcert(id_1,PK_EUICC_1,role_1,SK_CI) in
+    {46}out(c, Cert_EUICC_2);
+    {47}in(LPA2EUICC, (=t_getChal,=ID_LPA,dev_in: Id_t));
+    {40}let dev_2: Id_t = devMain in
+    {48}if (dev_in = dev_2) then
+    {49}new eChal_1: Nonce_t;
+    {50}out(LPA2EUICC, (dev_2,eChal_1));
+    {51}in(LPA2EUICC, (dev_srv: Id_t,serverSigned_2: bitstring,serverSig_2: Sig_t,Cert_DPauth_2: Cert_t));
+    {52}if (dev_srv = dev_2) then
+    {53}let (id_dp: Id_t,PK_DPauth_1: K_t,role_dp: Tag_t) = checkcert(Cert_DPauth_2,PK_CI) in
+    {54}let decoded_srv: bitstring = checksign(serverSig_2,PK_DPauth_1) in
+    {55}let mk_serverSigned1(tidU: Tid_t,eChalU: Nonce_t,sChalU: Nonce_t,smdpAddr: Id_t) = decoded_srv in
+    {56}if (eChalU = eChal_1) then
+    {57}if (smdpAddr = ID_SMDP) then
+    {58}event EUICC_AUTH_OK(dev_2,tidU);
+    {59}let clientSigned_2: bitstring = mk_clientSigned1(tidU,sChalU) in
+    {60}let clientSig_2: Sig_t = sign(clientSigned_2,SK_EUICC) in
+    {61}out(LPA2EUICC, (dev_2,clientSigned_2,clientSig_2,Cert_EUICC_2))
+)
+
+-- Query inj-event(EUICC_AUTH_OK(dev_3,tid_1)) ==> inj-event(SMDP_AUTH_BEGIN(dev_3,tid_1)) in process 1.
+Translating the process into Horn clauses...
+Completing...
+Termination warning: Selecting an hypothesis matching the conclusion.
+In case of non-termination, try a noselect declaration implying the following one:
+   noselect Cert_DPauth_3:Cert_t, serverSig_3:Sig_t, serverSigned_3:bitstring; mess(LPA2SMDP[],(devMain[],serverSigned_3,serverSig_3,Cert_DPauth_3)).
+Starting query inj-event(EUICC_AUTH_OK(dev_3,tid_1)) ==> inj-event(SMDP_AUTH_BEGIN(dev_3,tid_1))
+goal reachable: b-inj-event(SMDP_AUTH_BEGIN(devMain[],tid_1),@occ15_1) -> inj-event(EUICC_AUTH_OK(devMain[],tid_1),@occ58_1)
+The hypothesis occurs strictly before the conclusion.
+Abbreviations:
+eChal_2 = eChal_1[dev_in = devMain[],!1 = @sid]
+tid_1 = tid[eChalS = eChal_2,devS = devMain[],!1 = @sid_1]
+sChal_1 = sChal[eChalS = eChal_2,devS = devMain[],!1 = @sid_1]
+@occ58_1 = @occ58[Cert_DPauth_2 = signcert(ID_SMDP,pk(SK_DPauth),tag_dp,SK_CI),serverSig_2 = sign(mk_serverSigned1(tid_1,eChal_2,sChal_1,ID_SMDP),SK_DPauth),serverSigned_2 = mk_serverSigned1(tid_1,eChal_2,sChal_1,ID_SMDP),dev_srv = devMain[],dev_in = devMain[],!1 = @sid]
+@occ15_1 = @occ15[eChalS = eChal_2,devS = devMain[],!1 = @sid_1]
+RESULT inj-event(EUICC_AUTH_OK(dev_3,tid_1)) ==> inj-event(SMDP_AUTH_BEGIN(dev_3,tid_1)) is true.
+-- Query inj-event(SMDP_AUTH_OK(dev_3,tid_1)) ==> inj-event(EUICC_AUTH_OK(dev_3,tid_1)) in process 1.
+Translating the process into Horn clauses...
+Completing...
+Termination warning: Selecting an hypothesis matching the conclusion.
+In case of non-termination, try a noselect declaration implying the following one:
+   noselect Cert_DPauth_3:Cert_t, serverSig_3:Sig_t, serverSigned_3:bitstring; mess(LPA2SMDP[],(devMain[],serverSigned_3,serverSig_3,Cert_DPauth_3)).
+Starting query inj-event(SMDP_AUTH_OK(dev_3,tid_1)) ==> inj-event(EUICC_AUTH_OK(dev_3,tid_1))
+goal reachable: b-inj-event(EUICC_AUTH_OK(devMain[],tid_1),@occ58_2) -> inj-event(SMDP_AUTH_OK(devMain[],tid_1),@occ26_1)
+The hypothesis occurs strictly before the conclusion.
+Abbreviations:
+eChal_2 = eChal_1[dev_in = devMain[],!1 = @sid]
+tid_1 = tid[eChalS = eChal_2,devS = devMain[],!1 = @sid_1]
+SK_EUICC_1 = SK_EUICC[!1 = @sid]
+sChal_1 = sChal[eChalS = eChal_2,devS = devMain[],!1 = @sid_1]
+@occ26_1 = @occ26[Cert_EUICC = signcert(ID_EUICC,pk(SK_EUICC_1),tag_eu,SK_CI),clientSig = sign(mk_clientSigned1(tid_1,sChal_1),SK_EUICC_1),clientSigned = mk_clientSigned1(tid_1,sChal_1),devS2 = devMain[],eChalS = eChal_2,devS = devMain[],!1 = @sid_1]
+@occ58_2 = @occ58_1[Cert_DPauth_2 = signcert(ID_SMDP,pk(SK_DPauth),tag_dp,SK_CI),serverSig_2 = sign(mk_serverSigned1(tid_1,eChal_2,sChal_1,ID_SMDP),SK_DPauth),serverSigned_2 = mk_serverSigned1(tid_1,eChal_2,sChal_1,ID_SMDP),dev_srv = devMain[],dev_in = devMain[],!1 = @sid]
+RESULT inj-event(SMDP_AUTH_OK(dev_3,tid_1)) ==> inj-event(EUICC_AUTH_OK(dev_3,tid_1)) is true.
+
+--------------------------------------------------------------
+Verification summary:
+
+Query inj-event(EUICC_AUTH_OK(dev_3,tid_1)) ==> inj-event(SMDP_AUTH_BEGIN(dev_3,tid_1)) is true.
+
+Query inj-event(SMDP_AUTH_OK(dev_3,tid_1)) ==> inj-event(EUICC_AUTH_OK(dev_3,tid_1)) is true.
+
+--------------------------------------------------------------

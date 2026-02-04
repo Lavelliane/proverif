@@ -1,0 +1,565 @@
+Linear part:
+dh(x,dh_pk(y)) = dh(y,dh_pk(x))
+Completing equations...
+Completed equations:
+dh(x,dh_pk(y)) = dh(y,dh_pk(x))
+Convergent part: No equation.
+Process 0 (that is, the initial process):
+{1}let PK_CI: K_t = pk(SK_CI) in
+{2}out(c, PK_CI);
+{3}new devMain: Id_t;
+{4}new tidMain: Tid_t;
+{5}new SK_EUICC: K_t;
+{6}let PK_EUICC: K_t = pk(SK_EUICC) in
+{7}let PK_DPauth: K_t = pk(SK_DPauth) in
+(
+    {8}!
+    {9}let dev: Id_t = devMain in
+    {10}let tid: Tid_t = tidMain in
+    {11}let profile: Profile_t = secret_profile in
+    {12}let PK_DPauth_1: K_t = pk(SK_DPauth) in
+    {13}let id: Id_t = ID_SMDP in
+    {14}let role: Tag_t = tag_dp in
+    {15}let Cert_DPauth: Cert_t = signcert(id,PK_DPauth_1,role,SK_CI) in
+    {16}let serverSigned2: bitstring = mk_serverSigned2(tid) in
+    {17}let serverSig2: Sig_t = sign(serverSigned2,SK_DPauth) in
+    {18}event SMDP_PREPARE_DOWNLOAD(dev,tid);
+    {19}out(LPA2SMDP, (dev,tid,serverSig2));
+    {20}in(LPA2SMDP, (devS3: Id_t,pk_eu_eph: DHKey_t,clientSig2: Sig_t));
+    {21}if (devS3 = dev) then
+    {22}let decoded_cli2: bitstring = checksign(clientSig2,PK_EUICC) in
+    {23}let mk_clientSigned2(tid3: Tid_t,pk_check: DHKey_t) = decoded_cli2 in
+    {24}if (tid3 = tid) then
+    {25}if (pk_check = pk_eu_eph) then
+    {26}new sk_dp_eph: DHKey_t;
+    {27}let pk_dp_eph: DHKey_t = dh_pk(sk_dp_eph) in
+    {28}let shs: SharedSecret_t = dh(sk_dp_eph,pk_eu_eph) in
+    {29}let k_enc: SymKey_t = kdf_enc(shs) in
+    {30}let k_mac: SymKey_t = kdf_mac(shs) in
+    {31}event SMDP_DH_COMPLETE(dev,tid,pk_eu_eph,pk_dp_eph);
+    {32}let encrypted_profile: bitstring = senc(profile,k_enc) in
+    {33}let bpp_body: bitstring = mk_bpp_body(tid,pk_eu_eph,pk_dp_eph,encrypted_profile) in
+    {34}let bpp_mac: MAC_t = mac(bpp_body,k_mac) in
+    {35}let serverSigned3: bitstring = mk_serverSigned3(tid,pk_dp_eph) in
+    {36}let serverSig3: Sig_t = sign(serverSigned3,SK_DPauth) in
+    {37}event SMDP_BOUND_PROFILE(dev,tid,profile);
+    {38}out(LPA2SMDP, (dev,bpp_body,bpp_mac,serverSig3));
+    {39}in(LPA2SMDP, (devS4: Id_t,tid_result: Tid_t,iccid: ICCID_t,installSig: Sig_t));
+    {40}if (devS4 = dev) then
+    {41}if (tid_result = tid) then
+    {42}let decoded_result: bitstring = checksign(installSig,PK_EUICC) in
+    {43}let mk_install_result(tid_check: Tid_t,iccid_check: ICCID_t) = decoded_result in
+    {44}if (tid_check = tid) then
+    {45}if (iccid_check = iccid) then
+    {46}event SMDP_INSTALL_CONFIRMED(dev,tid,iccid)
+) | (
+    {47}!
+    {48}let dev_1: Id_t = devMain in
+    {49}let tid_1: Tid_t = tidMain in
+    {50}in(LPA2SMDP, (dev4: Id_t,tid4: Tid_t,serverSig2_1: Sig_t));
+    {51}if (dev4 = dev_1) then
+    {52}if (tid4 = tid_1) then
+    {53}out(LPA2EUICC, (t_prepDownload,dev_1,tid_1,serverSig2_1));
+    {54}in(LPA2EUICC, (dev5: Id_t,pk_eu_eph_1: DHKey_t,clientSig2_1: Sig_t));
+    {55}if (dev5 = dev_1) then
+    {56}out(LPA2SMDP, (dev_1,pk_eu_eph_1,clientSig2_1));
+    {57}in(LPA2SMDP, (dev6: Id_t,bpp_body_1: bitstring,bpp_mac_1: MAC_t,serverSig3_1: Sig_t));
+    {58}if (dev6 = dev_1) then
+    {59}out(LPA2EUICC, (t_loadBPP,dev_1,bpp_body_1,bpp_mac_1,serverSig3_1));
+    {60}in(LPA2EUICC, (dev7: Id_t,tid_result_1: Tid_t,iccid_1: ICCID_t,installSig_1: Sig_t));
+    {61}if (dev7 = dev_1) then
+    {62}out(LPA2SMDP, (dev_1,tid_result_1,iccid_1,installSig_1))
+) | (
+    {63}!
+    {64}let dev_2: Id_t = devMain in
+    {65}let tidU: Tid_t = tidMain in
+    {66}let SK_EUICC_1: K_t = SK_EUICC in
+    {67}let PK_EUICC_1: K_t = pk(SK_EUICC_1) in
+    {68}let id_1: Id_t = ID_EUICC in
+    {69}let role_1: Tag_t = tag_eu in
+    {70}let Cert_EUICC: Cert_t = signcert(id_1,PK_EUICC_1,role_1,SK_CI) in
+    {71}in(LPA2EUICC, (=t_prepDownload,dev_pd: Id_t,tid_pd: Tid_t,serverSig2_2: Sig_t));
+    {72}if (dev_pd = dev_2) then
+    {73}if (tid_pd = tidU) then
+    {74}let decoded_srv2: bitstring = checksign(serverSig2_2,PK_DPauth) in
+    {75}let mk_serverSigned2(tid_check_1: Tid_t) = decoded_srv2 in
+    {76}if (tid_check_1 = tidU) then
+    {77}new sk_eu_eph: DHKey_t;
+    {78}let pk_eu_eph_2: DHKey_t = dh_pk(sk_eu_eph) in
+    {79}event EUICC_PREPARE_DOWNLOAD_OK(dev_2,tidU,pk_eu_eph_2);
+    {80}let clientSigned2: bitstring = mk_clientSigned2(tidU,pk_eu_eph_2) in
+    {81}let clientSig2_2: Sig_t = sign(clientSigned2,SK_EUICC_1) in
+    {82}out(LPA2EUICC, (dev_2,pk_eu_eph_2,clientSig2_2));
+    {83}in(LPA2EUICC, (=t_loadBPP,dev_bpp: Id_t,bpp_body_2: bitstring,bpp_mac_2: MAC_t,serverSig3_2: Sig_t));
+    {84}if (dev_bpp = dev_2) then
+    {85}let decoded_srv3: bitstring = checksign(serverSig3_2,PK_DPauth) in
+    {86}let mk_serverSigned3(tid_bpp: Tid_t,pk_dp_eph_1: DHKey_t) = decoded_srv3 in
+    {87}if (tid_bpp = tidU) then
+    {88}let shs_1: SharedSecret_t = dh(sk_eu_eph,pk_dp_eph_1) in
+    {89}let k_enc_1: SymKey_t = kdf_enc(shs_1) in
+    {90}let k_mac_1: SymKey_t = kdf_mac(shs_1) in
+    {91}event EUICC_DH_COMPLETE(dev_2,tidU,pk_eu_eph_2,pk_dp_eph_1);
+    {92}let mk_bpp_body(=tidU,=pk_eu_eph_2,=pk_dp_eph_1,encrypted_profile_1: bitstring) = bpp_body_2 in
+    {93}if (verify_mac(bpp_mac_2,bpp_body_2,k_mac_1) = true) then
+    {94}let profile_1: Profile_t = sdec(encrypted_profile_1,k_enc_1) in
+    {95}new iccid_2: ICCID_t;
+    {96}event EUICC_PROFILE_INSTALLED(dev_2,tidU,profile_1,iccid_2);
+    {97}let installResult: bitstring = mk_install_result(tidU,iccid_2) in
+    {98}let installSig_2: Sig_t = sign(installResult,SK_EUICC_1) in
+    {99}out(LPA2EUICC, (dev_2,tidU,iccid_2,installSig_2))
+) | (
+    {100}phase 1;
+    {101}out(c, SK_DPauth)
+)
+
+--  Process 1 (that is, process 0, with let moved downwards):
+{1}let PK_CI: K_t = pk(SK_CI) in
+{2}out(c, PK_CI);
+{3}new devMain: Id_t;
+{4}new tidMain: Tid_t;
+{5}new SK_EUICC: K_t;
+(
+    {8}!
+    {10}let tid: Tid_t = tidMain in
+    {9}let dev: Id_t = devMain in
+    {18}event SMDP_PREPARE_DOWNLOAD(dev,tid);
+    {16}let serverSigned2: bitstring = mk_serverSigned2(tid) in
+    {17}let serverSig2: Sig_t = sign(serverSigned2,SK_DPauth) in
+    {19}out(LPA2SMDP, (dev,tid,serverSig2));
+    {20}in(LPA2SMDP, (devS3: Id_t,pk_eu_eph: DHKey_t,clientSig2: Sig_t));
+    {21}if (devS3 = dev) then
+    {6}let PK_EUICC: K_t = pk(SK_EUICC) in
+    {22}let decoded_cli2: bitstring = checksign(clientSig2,PK_EUICC) in
+    {23}let mk_clientSigned2(tid3: Tid_t,pk_check: DHKey_t) = decoded_cli2 in
+    {24}if (tid3 = tid) then
+    {25}if (pk_check = pk_eu_eph) then
+    {26}new sk_dp_eph: DHKey_t;
+    {27}let pk_dp_eph: DHKey_t = dh_pk(sk_dp_eph) in
+    {31}event SMDP_DH_COMPLETE(dev,tid,pk_eu_eph,pk_dp_eph);
+    {11}let profile: Profile_t = secret_profile in
+    {37}event SMDP_BOUND_PROFILE(dev,tid,profile);
+    {35}let serverSigned3: bitstring = mk_serverSigned3(tid,pk_dp_eph) in
+    {36}let serverSig3: Sig_t = sign(serverSigned3,SK_DPauth) in
+    {28}let shs: SharedSecret_t = dh(sk_dp_eph,pk_eu_eph) in
+    {29}let k_enc: SymKey_t = kdf_enc(shs) in
+    {32}let encrypted_profile: bitstring = senc(profile,k_enc) in
+    {33}let bpp_body: bitstring = mk_bpp_body(tid,pk_eu_eph,pk_dp_eph,encrypted_profile) in
+    {30}let k_mac: SymKey_t = kdf_mac(shs) in
+    {34}let bpp_mac: MAC_t = mac(bpp_body,k_mac) in
+    {38}out(LPA2SMDP, (dev,bpp_body,bpp_mac,serverSig3));
+    {39}in(LPA2SMDP, (devS4: Id_t,tid_result: Tid_t,iccid: ICCID_t,installSig: Sig_t));
+    {40}if (devS4 = dev) then
+    {41}if (tid_result = tid) then
+    {42}let decoded_result: bitstring = checksign(installSig,PK_EUICC) in
+    {43}let mk_install_result(tid_check: Tid_t,iccid_check: ICCID_t) = decoded_result in
+    {44}if (tid_check = tid) then
+    {45}if (iccid_check = iccid) then
+    {46}event SMDP_INSTALL_CONFIRMED(dev,tid,iccid)
+) | (
+    {47}!
+    {50}in(LPA2SMDP, (dev4: Id_t,tid4: Tid_t,serverSig2_1: Sig_t));
+    {48}let dev_1: Id_t = devMain in
+    {51}if (dev4 = dev_1) then
+    {49}let tid_1: Tid_t = tidMain in
+    {52}if (tid4 = tid_1) then
+    {53}out(LPA2EUICC, (t_prepDownload,dev_1,tid_1,serverSig2_1));
+    {54}in(LPA2EUICC, (dev5: Id_t,pk_eu_eph_1: DHKey_t,clientSig2_1: Sig_t));
+    {55}if (dev5 = dev_1) then
+    {56}out(LPA2SMDP, (dev_1,pk_eu_eph_1,clientSig2_1));
+    {57}in(LPA2SMDP, (dev6: Id_t,bpp_body_1: bitstring,bpp_mac_1: MAC_t,serverSig3_1: Sig_t));
+    {58}if (dev6 = dev_1) then
+    {59}out(LPA2EUICC, (t_loadBPP,dev_1,bpp_body_1,bpp_mac_1,serverSig3_1));
+    {60}in(LPA2EUICC, (dev7: Id_t,tid_result_1: Tid_t,iccid_1: ICCID_t,installSig_1: Sig_t));
+    {61}if (dev7 = dev_1) then
+    {62}out(LPA2SMDP, (dev_1,tid_result_1,iccid_1,installSig_1))
+) | (
+    {63}!
+    {71}in(LPA2EUICC, (=t_prepDownload,dev_pd: Id_t,tid_pd: Tid_t,serverSig2_2: Sig_t));
+    {64}let dev_2: Id_t = devMain in
+    {72}if (dev_pd = dev_2) then
+    {65}let tidU: Tid_t = tidMain in
+    {73}if (tid_pd = tidU) then
+    {7}let PK_DPauth: K_t = pk(SK_DPauth) in
+    {74}let decoded_srv2: bitstring = checksign(serverSig2_2,PK_DPauth) in
+    {75}let mk_serverSigned2(tid_check_1: Tid_t) = decoded_srv2 in
+    {76}if (tid_check_1 = tidU) then
+    {77}new sk_eu_eph: DHKey_t;
+    {78}let pk_eu_eph_2: DHKey_t = dh_pk(sk_eu_eph) in
+    {79}event EUICC_PREPARE_DOWNLOAD_OK(dev_2,tidU,pk_eu_eph_2);
+    {80}let clientSigned2: bitstring = mk_clientSigned2(tidU,pk_eu_eph_2) in
+    {66}let SK_EUICC_1: K_t = SK_EUICC in
+    {81}let clientSig2_2: Sig_t = sign(clientSigned2,SK_EUICC_1) in
+    {82}out(LPA2EUICC, (dev_2,pk_eu_eph_2,clientSig2_2));
+    {83}in(LPA2EUICC, (=t_loadBPP,dev_bpp: Id_t,bpp_body_2: bitstring,bpp_mac_2: MAC_t,serverSig3_2: Sig_t));
+    {84}if (dev_bpp = dev_2) then
+    {85}let decoded_srv3: bitstring = checksign(serverSig3_2,PK_DPauth) in
+    {86}let mk_serverSigned3(tid_bpp: Tid_t,pk_dp_eph_1: DHKey_t) = decoded_srv3 in
+    {87}if (tid_bpp = tidU) then
+    {91}event EUICC_DH_COMPLETE(dev_2,tidU,pk_eu_eph_2,pk_dp_eph_1);
+    {92}let mk_bpp_body(=tidU,=pk_eu_eph_2,=pk_dp_eph_1,encrypted_profile_1: bitstring) = bpp_body_2 in
+    {88}let shs_1: SharedSecret_t = dh(sk_eu_eph,pk_dp_eph_1) in
+    {90}let k_mac_1: SymKey_t = kdf_mac(shs_1) in
+    {93}if (verify_mac(bpp_mac_2,bpp_body_2,k_mac_1) = true) then
+    {89}let k_enc_1: SymKey_t = kdf_enc(shs_1) in
+    {94}let profile_1: Profile_t = sdec(encrypted_profile_1,k_enc_1) in
+    {95}new iccid_2: ICCID_t;
+    {96}event EUICC_PROFILE_INSTALLED(dev_2,tidU,profile_1,iccid_2);
+    {97}let installResult: bitstring = mk_install_result(tidU,iccid_2) in
+    {98}let installSig_2: Sig_t = sign(installResult,SK_EUICC_1) in
+    {99}out(LPA2EUICC, (dev_2,tidU,iccid_2,installSig_2))
+) | (
+    {100}phase 1;
+    {101}out(c, SK_DPauth)
+)
+
+-- Query not attacker_p1(secret_profile[]) in process 1.
+Translating the process into Horn clauses...
+Completing...
+200 rules inserted. Base: 188 rules (77 with conclusion selected). Queue: 4 rules.
+Termination warning: Selecting an hypothesis matching the conclusion.
+In case of non-termination, try a noselect declaration implying the following one:
+   noselect serverSig3_3:Sig_t, bpp_mac_3:MAC_t, bpp_body_3:bitstring; mess(LPA2SMDP[],(devMain[],bpp_body_3,bpp_mac_3,serverSig3_3)).
+Starting query not attacker_p1(secret_profile[])
+RESULT not attacker_p1(secret_profile[]) is true.
+-- Query not attacker_p1(secret_profile[]) in process 1.
+Translating the process into Horn clauses...
+Completing...
+200 rules inserted. Base: 188 rules (77 with conclusion selected). Queue: 4 rules.
+Termination warning: Selecting an hypothesis matching the conclusion.
+In case of non-termination, try a noselect declaration implying the following one:
+   noselect serverSig3_3:Sig_t, bpp_mac_3:MAC_t, bpp_body_3:bitstring; mess(LPA2SMDP[],(devMain[],bpp_body_3,bpp_mac_3,serverSig3_3)).
+Starting query not attacker_p1(secret_profile[])
+RESULT not attacker_p1(secret_profile[]) is true.
+-- Query inj-event(EUICC_PROFILE_INSTALLED(dev_3,tid_2,profile_2,iccid_3)) ==> inj-event(SMDP_BOUND_PROFILE(dev_3,tid_2,profile_2)) in process 1.
+Translating the process into Horn clauses...
+Completing...
+200 rules inserted. Base: 190 rules (77 with conclusion selected). Queue: 12 rules.
+Termination warning: Selecting an hypothesis matching the conclusion.
+In case of non-termination, try a noselect declaration implying the following one:
+   noselect serverSig3_3:Sig_t, bpp_mac_3:MAC_t, bpp_body_3:bitstring; mess(LPA2SMDP[],(devMain[],bpp_body_3,bpp_mac_3,serverSig3_3)).
+Starting query inj-event(EUICC_PROFILE_INSTALLED(dev_3,tid_2,profile_2,iccid_3)) ==> inj-event(SMDP_BOUND_PROFILE(dev_3,tid_2,profile_2))
+goal reachable: b-inj-event(SMDP_BOUND_PROFILE(devMain[],tidMain[],secret_profile[]),@occ37_1) -> inj-event(EUICC_PROFILE_INSTALLED(devMain[],tidMain[],secret_profile[],iccid_3),@occ96_1)
+The hypothesis occurs strictly before the conclusion.
+Abbreviations:
+sk_eu_eph_1 = sk_eu_eph[serverSig2_2 = sign(mk_serverSigned2(tidMain[]),SK_DPauth),tid_pd = tidMain[],dev_pd = devMain[],!1 = @sid]
+sk_dp_eph_1 = sk_dp_eph[clientSig2 = sign(mk_clientSigned2(tidMain[],dh_pk(sk_eu_eph_1)),SK_EUICC[]),pk_eu_eph = dh_pk(sk_eu_eph_1),devS3 = devMain[],!1 = @sid_1]
+iccid_3 = iccid_2[serverSig3_2 = sign(mk_serverSigned3(tidMain[],dh_pk(sk_dp_eph_1)),SK_DPauth),bpp_mac_2 = mac(mk_bpp_body(tidMain[],dh_pk(sk_eu_eph_1),dh_pk(sk_dp_eph_1),senc(secret_profile[],kdf_enc(dh(sk_dp_eph_1,dh_pk(sk_eu_eph_1))))),kdf_mac(dh(sk_dp_eph_1,dh_pk(sk_eu_eph_1)))),bpp_body_2 = mk_bpp_body(tidMain[],dh_pk(sk_eu_eph_1),dh_pk(sk_dp_eph_1),senc(secret_profile[],kdf_enc(dh(sk_dp_eph_1,dh_pk(sk_eu_eph_1))))),dev_bpp = devMain[],serverSig2_2 = sign(mk_serverSigned2(tidMain[]),SK_DPauth),tid_pd = tidMain[],dev_pd = devMain[],!1 = @sid]
+@occ96_1 = @occ96[serverSig3_2 = sign(mk_serverSigned3(tidMain[],dh_pk(sk_dp_eph_1)),SK_DPauth),bpp_mac_2 = mac(mk_bpp_body(tidMain[],dh_pk(sk_eu_eph_1),dh_pk(sk_dp_eph_1),senc(secret_profile[],kdf_enc(dh(sk_dp_eph_1,dh_pk(sk_eu_eph_1))))),kdf_mac(dh(sk_dp_eph_1,dh_pk(sk_eu_eph_1)))),bpp_body_2 = mk_bpp_body(tidMain[],dh_pk(sk_eu_eph_1),dh_pk(sk_dp_eph_1),senc(secret_profile[],kdf_enc(dh(sk_dp_eph_1,dh_pk(sk_eu_eph_1))))),dev_bpp = devMain[],serverSig2_2 = sign(mk_serverSigned2(tidMain[]),SK_DPauth),tid_pd = tidMain[],dev_pd = devMain[],!1 = @sid]
+@occ37_1 = @occ37[clientSig2 = sign(mk_clientSigned2(tidMain[],dh_pk(sk_eu_eph_1)),SK_EUICC[]),pk_eu_eph = dh_pk(sk_eu_eph_1),devS3 = devMain[],!1 = @sid_1]
+RESULT inj-event(EUICC_PROFILE_INSTALLED(dev_3,tid_2,profile_2,iccid_3)) ==> inj-event(SMDP_BOUND_PROFILE(dev_3,tid_2,profile_2)) is true.
+-- Query inj-event(SMDP_INSTALL_CONFIRMED(dev_3,tid_2,iccid_3)) ==> inj-event(EUICC_PROFILE_INSTALLED(dev_3,tid_2,profile_2,iccid_3)) in process 1.
+Translating the process into Horn clauses...
+Completing...
+200 rules inserted. Base: 188 rules (77 with conclusion selected). Queue: 10 rules.
+Termination warning: Selecting an hypothesis matching the conclusion.
+In case of non-termination, try a noselect declaration implying the following one:
+   noselect serverSig3_3:Sig_t, bpp_mac_3:MAC_t, bpp_body_3:bitstring; mess(LPA2SMDP[],(devMain[],bpp_body_3,bpp_mac_3,serverSig3_3)).
+Starting query inj-event(SMDP_INSTALL_CONFIRMED(dev_3,tid_2,iccid_3)) ==> inj-event(EUICC_PROFILE_INSTALLED(dev_3,tid_2,profile_2,iccid_3))
+goal reachable: @sid ≠ @sid_1 && b-inj-event(EUICC_PROFILE_INSTALLED(devMain[],tidMain[],secret_profile[],iccid_3),@occ96_2) -> inj-event(SMDP_INSTALL_CONFIRMED(devMain[],tidMain[],iccid_3),@occ46_1) && inj-event(SMDP_INSTALL_CONFIRMED(devMain[],tidMain[],iccid_3),@occ46_2)
+Abbreviations:
+sk_eu_eph_1 = sk_eu_eph[serverSig2_2 = sign(mk_serverSigned2(tidMain[]),SK_DPauth),tid_pd = tidMain[],dev_pd = devMain[],!1 = @sid_2]
+sk_dp_eph_1 = sk_dp_eph[clientSig2 = sign(mk_clientSigned2(tidMain[],dh_pk(sk_eu_eph_1)),SK_EUICC[]),pk_eu_eph = dh_pk(sk_eu_eph_1),devS3 = devMain[],!1 = @sid_3]
+iccid_3 = iccid_2[serverSig3_2 = sign(mk_serverSigned3(tidMain[],dh_pk(sk_dp_eph_1)),SK_DPauth),bpp_mac_2 = mac(mk_bpp_body(tidMain[],dh_pk(sk_eu_eph_1),dh_pk(sk_dp_eph_1),senc(secret_profile[],kdf_enc(dh(sk_dp_eph_1,dh_pk(sk_eu_eph_1))))),kdf_mac(dh(sk_dp_eph_1,dh_pk(sk_eu_eph_1)))),bpp_body_2 = mk_bpp_body(tidMain[],dh_pk(sk_eu_eph_1),dh_pk(sk_dp_eph_1),senc(secret_profile[],kdf_enc(dh(sk_dp_eph_1,dh_pk(sk_eu_eph_1))))),dev_bpp = devMain[],serverSig2_2 = sign(mk_serverSigned2(tidMain[]),SK_DPauth),tid_pd = tidMain[],dev_pd = devMain[],!1 = @sid_2]
+sk_eu_eph_2 = sk_eu_eph[serverSig2_2 = sign(mk_serverSigned2(tidMain[]),SK_DPauth),tid_pd = tidMain[],dev_pd = devMain[],!1 = @sid_4]
+@occ46_1 = @occ46[installSig = sign(mk_install_result(tidMain[],iccid_3),SK_EUICC[]),iccid = iccid_3,tid_result = tidMain[],devS4 = devMain[],clientSig2 = sign(mk_clientSigned2(tidMain[],dh_pk(sk_eu_eph_2)),SK_EUICC[]),pk_eu_eph = dh_pk(sk_eu_eph_2),devS3 = devMain[],!1 = @sid]
+sk_eu_eph_3 = sk_eu_eph[serverSig2_2 = sign(mk_serverSigned2(tidMain[]),SK_DPauth),tid_pd = tidMain[],dev_pd = devMain[],!1 = @sid_5]
+@occ46_2 = @occ46[installSig = sign(mk_install_result(tidMain[],iccid_3),SK_EUICC[]),iccid = iccid_3,tid_result = tidMain[],devS4 = devMain[],clientSig2 = sign(mk_clientSigned2(tidMain[],dh_pk(sk_eu_eph_3)),SK_EUICC[]),pk_eu_eph = dh_pk(sk_eu_eph_3),devS3 = devMain[],!1 = @sid_1]
+@occ96_2 = @occ96_1[serverSig3_2 = sign(mk_serverSigned3(tidMain[],dh_pk(sk_dp_eph_1)),SK_DPauth),bpp_mac_2 = mac(mk_bpp_body(tidMain[],dh_pk(sk_eu_eph_1),dh_pk(sk_dp_eph_1),senc(secret_profile[],kdf_enc(dh(sk_dp_eph_1,dh_pk(sk_eu_eph_1))))),kdf_mac(dh(sk_dp_eph_1,dh_pk(sk_eu_eph_1)))),bpp_body_2 = mk_bpp_body(tidMain[],dh_pk(sk_eu_eph_1),dh_pk(sk_dp_eph_1),senc(secret_profile[],kdf_enc(dh(sk_dp_eph_1,dh_pk(sk_eu_eph_1))))),dev_bpp = devMain[],serverSig2_2 = sign(mk_serverSigned2(tidMain[]),SK_DPauth),tid_pd = tidMain[],dev_pd = devMain[],!1 = @sid_2]
+
+Derivation:
+Abbreviations:
+sk_eu_eph_1 = sk_eu_eph[serverSig2_2 = sign(mk_serverSigned2(tidMain[]),SK_DPauth),tid_pd = tidMain[],dev_pd = devMain[],!1 = @sid]
+sk_dp_eph_1 = sk_dp_eph[clientSig2 = sign(mk_clientSigned2(tidMain[],dh_pk(sk_eu_eph_1)),SK_EUICC[]),pk_eu_eph = dh_pk(sk_eu_eph_1),devS3 = devMain[],!1 = @sid_1]
+iccid_3 = iccid_2[serverSig3_2 = sign(mk_serverSigned3(tidMain[],dh_pk(sk_dp_eph_1)),SK_DPauth),bpp_mac_2 = mac(mk_bpp_body(tidMain[],dh_pk(sk_eu_eph_1),dh_pk(sk_dp_eph_1),senc(secret_profile[],kdf_enc(dh(sk_dp_eph_1,dh_pk(sk_eu_eph_1))))),kdf_mac(dh(sk_dp_eph_1,dh_pk(sk_eu_eph_1)))),bpp_body_2 = mk_bpp_body(tidMain[],dh_pk(sk_eu_eph_1),dh_pk(sk_dp_eph_1),senc(secret_profile[],kdf_enc(dh(sk_dp_eph_1,dh_pk(sk_eu_eph_1))))),dev_bpp = devMain[],serverSig2_2 = sign(mk_serverSigned2(tidMain[]),SK_DPauth),tid_pd = tidMain[],dev_pd = devMain[],!1 = @sid]
+sk_eu_eph_2 = sk_eu_eph[serverSig2_2 = sign(mk_serverSigned2(tidMain[]),SK_DPauth),tid_pd = tidMain[],dev_pd = devMain[],!1 = @sid_2]
+@occ46_1 = @occ46[installSig = sign(mk_install_result(tidMain[],iccid_3),SK_EUICC[]),iccid = iccid_3,tid_result = tidMain[],devS4 = devMain[],clientSig2 = sign(mk_clientSigned2(tidMain[],dh_pk(sk_eu_eph_2)),SK_EUICC[]),pk_eu_eph = dh_pk(sk_eu_eph_2),devS3 = devMain[],!1 = @sid_3]
+sk_eu_eph_3 = sk_eu_eph[serverSig2_2 = sign(mk_serverSigned2(tidMain[]),SK_DPauth),tid_pd = tidMain[],dev_pd = devMain[],!1 = @sid_4]
+@occ46_2 = @occ46[installSig = sign(mk_install_result(tidMain[],iccid_3),SK_EUICC[]),iccid = iccid_3,tid_result = tidMain[],devS4 = devMain[],clientSig2 = sign(mk_clientSigned2(tidMain[],dh_pk(sk_eu_eph_3)),SK_EUICC[]),pk_eu_eph = dh_pk(sk_eu_eph_3),devS3 = devMain[],!1 = @sid_5]
+@occ96_2 = @occ96_1[serverSig3_2 = sign(mk_serverSigned3(tidMain[],dh_pk(sk_dp_eph_1)),SK_DPauth),bpp_mac_2 = mac(mk_bpp_body(tidMain[],dh_pk(sk_eu_eph_1),dh_pk(sk_dp_eph_1),senc(secret_profile[],kdf_enc(dh(sk_dp_eph_1,dh_pk(sk_eu_eph_1))))),kdf_mac(dh(sk_dp_eph_1,dh_pk(sk_eu_eph_1)))),bpp_body_2 = mk_bpp_body(tidMain[],dh_pk(sk_eu_eph_1),dh_pk(sk_dp_eph_1),senc(secret_profile[],kdf_enc(dh(sk_dp_eph_1,dh_pk(sk_eu_eph_1))))),dev_bpp = devMain[],serverSig2_2 = sign(mk_serverSigned2(tidMain[]),SK_DPauth),tid_pd = tidMain[],dev_pd = devMain[],!1 = @sid]
+sk_eu_eph_4 = sk_eu_eph[serverSig2_2 = sign(mk_serverSigned2(tidMain[]),SK_DPauth),tid_pd = tidMain[],dev_pd = devMain[],!1 = @sid_6]
+sk_eu_eph_5 = sk_eu_eph[serverSig2_2 = sign(mk_serverSigned2(tidMain[]),SK_DPauth),tid_pd = tidMain[],dev_pd = devMain[],!1 = @sid_7]
+sk_dp_eph_2 = sk_dp_eph[clientSig2 = sign(mk_clientSigned2(tidMain[],dh_pk(sk_eu_eph_5)),SK_EUICC[]),pk_eu_eph = dh_pk(sk_eu_eph_5),devS3 = devMain[],!1 = @sid_8]
+sk_eu_eph_6 = sk_eu_eph[serverSig2_2 = sign(mk_serverSigned2(tidMain[]),SK_DPauth),tid_pd = tidMain[],dev_pd = devMain[],!1 = @sid_9]
+sk_eu_eph_7 = sk_eu_eph[serverSig2_2 = sign(mk_serverSigned2(tidMain[]),SK_DPauth),tid_pd = tidMain[],dev_pd = devMain[],!1 = @sid_10]
+sk_eu_eph_8 = sk_eu_eph[serverSig2_2 = sign(mk_serverSigned2(tidMain[]),SK_DPauth),tid_pd = tidMain[],dev_pd = devMain[],!1 = @sid_11]
+sk_dp_eph_3 = sk_dp_eph[clientSig2 = sign(mk_clientSigned2(tidMain[],dh_pk(sk_eu_eph_8)),SK_EUICC[]),pk_eu_eph = dh_pk(sk_eu_eph_8),devS3 = devMain[],!1 = @sid_12]
+sk_eu_eph_9 = sk_eu_eph[serverSig2_2 = sign(mk_serverSigned2(tidMain[]),SK_DPauth),tid_pd = tidMain[],dev_pd = devMain[],!1 = @sid_13]
+
+1. The message (devMain[],tidMain[],sign(mk_serverSigned2(tidMain[]),SK_DPauth)) may be sent on channel LPA2SMDP[] at output {19}.
+mess(LPA2SMDP[],(devMain[],tidMain[],sign(mk_serverSigned2(tidMain[]),SK_DPauth))).
+
+2. The message (devMain[],tidMain[],sign(mk_serverSigned2(tidMain[]),SK_DPauth)) may be sent on channel LPA2SMDP[] at output {19}.
+mess(LPA2SMDP[],(devMain[],tidMain[],sign(mk_serverSigned2(tidMain[]),SK_DPauth))).
+
+3. The message (devMain[],tidMain[],sign(mk_serverSigned2(tidMain[]),SK_DPauth)) that may be sent on channel LPA2SMDP[] by 2 may be received at input {50}.
+So the message (t_prepDownload,devMain[],tidMain[],sign(mk_serverSigned2(tidMain[]),SK_DPauth)) may be sent on channel LPA2EUICC[] at output {53}.
+mess(LPA2EUICC[],(t_prepDownload,devMain[],tidMain[],sign(mk_serverSigned2(tidMain[]),SK_DPauth))).
+
+4. The message (t_prepDownload,devMain[],tidMain[],sign(mk_serverSigned2(tidMain[]),SK_DPauth)) that may be sent on channel LPA2EUICC[] by 3 may be received at input {71}.
+So the message (devMain[],dh_pk(sk_eu_eph_3),sign(mk_clientSigned2(tidMain[],dh_pk(sk_eu_eph_3)),SK_EUICC[])) may be sent on channel LPA2EUICC[] at output {82}.
+mess(LPA2EUICC[],(devMain[],dh_pk(sk_eu_eph_3),sign(mk_clientSigned2(tidMain[],dh_pk(sk_eu_eph_3)),SK_EUICC[]))).
+
+5. The message (devMain[],tidMain[],sign(mk_serverSigned2(tidMain[]),SK_DPauth)) that may be sent on channel LPA2SMDP[] by 1 may be received at input {50}.
+The message (devMain[],dh_pk(sk_eu_eph_3),sign(mk_clientSigned2(tidMain[],dh_pk(sk_eu_eph_3)),SK_EUICC[])) that may be sent on channel LPA2EUICC[] by 4 may be received at input {54}.
+So the message (devMain[],dh_pk(sk_eu_eph_3),sign(mk_clientSigned2(tidMain[],dh_pk(sk_eu_eph_3)),SK_EUICC[])) may be sent on channel LPA2SMDP[] at output {56}.
+mess(LPA2SMDP[],(devMain[],dh_pk(sk_eu_eph_3),sign(mk_clientSigned2(tidMain[],dh_pk(sk_eu_eph_3)),SK_EUICC[]))).
+
+6. The message (devMain[],tidMain[],sign(mk_serverSigned2(tidMain[]),SK_DPauth)) may be sent on channel LPA2SMDP[] at output {19}.
+mess(LPA2SMDP[],(devMain[],tidMain[],sign(mk_serverSigned2(tidMain[]),SK_DPauth))).
+
+7. The message (devMain[],tidMain[],sign(mk_serverSigned2(tidMain[]),SK_DPauth)) may be sent on channel LPA2SMDP[] at output {19}.
+mess(LPA2SMDP[],(devMain[],tidMain[],sign(mk_serverSigned2(tidMain[]),SK_DPauth))).
+
+8. The message (devMain[],tidMain[],sign(mk_serverSigned2(tidMain[]),SK_DPauth)) that may be sent on channel LPA2SMDP[] by 7 may be received at input {50}.
+So the message (t_prepDownload,devMain[],tidMain[],sign(mk_serverSigned2(tidMain[]),SK_DPauth)) may be sent on channel LPA2EUICC[] at output {53}.
+mess(LPA2EUICC[],(t_prepDownload,devMain[],tidMain[],sign(mk_serverSigned2(tidMain[]),SK_DPauth))).
+
+9. The message (t_prepDownload,devMain[],tidMain[],sign(mk_serverSigned2(tidMain[]),SK_DPauth)) that may be sent on channel LPA2EUICC[] by 8 may be received at input {71}.
+So the message (devMain[],dh_pk(sk_eu_eph_9),sign(mk_clientSigned2(tidMain[],dh_pk(sk_eu_eph_9)),SK_EUICC[])) may be sent on channel LPA2EUICC[] at output {82}.
+mess(LPA2EUICC[],(devMain[],dh_pk(sk_eu_eph_9),sign(mk_clientSigned2(tidMain[],dh_pk(sk_eu_eph_9)),SK_EUICC[]))).
+
+10. The message (devMain[],tidMain[],sign(mk_serverSigned2(tidMain[]),SK_DPauth)) may be sent on channel LPA2SMDP[] at output {19}.
+mess(LPA2SMDP[],(devMain[],tidMain[],sign(mk_serverSigned2(tidMain[]),SK_DPauth))).
+
+11. The message (devMain[],tidMain[],sign(mk_serverSigned2(tidMain[]),SK_DPauth)) may be sent on channel LPA2SMDP[] at output {19}.
+mess(LPA2SMDP[],(devMain[],tidMain[],sign(mk_serverSigned2(tidMain[]),SK_DPauth))).
+
+12. The message (devMain[],tidMain[],sign(mk_serverSigned2(tidMain[]),SK_DPauth)) that may be sent on channel LPA2SMDP[] by 11 may be received at input {50}.
+So the message (t_prepDownload,devMain[],tidMain[],sign(mk_serverSigned2(tidMain[]),SK_DPauth)) may be sent on channel LPA2EUICC[] at output {53}.
+mess(LPA2EUICC[],(t_prepDownload,devMain[],tidMain[],sign(mk_serverSigned2(tidMain[]),SK_DPauth))).
+
+13. The message (t_prepDownload,devMain[],tidMain[],sign(mk_serverSigned2(tidMain[]),SK_DPauth)) that may be sent on channel LPA2EUICC[] by 12 may be received at input {71}.
+So the message (devMain[],dh_pk(sk_eu_eph_8),sign(mk_clientSigned2(tidMain[],dh_pk(sk_eu_eph_8)),SK_EUICC[])) may be sent on channel LPA2EUICC[] at output {82}.
+mess(LPA2EUICC[],(devMain[],dh_pk(sk_eu_eph_8),sign(mk_clientSigned2(tidMain[],dh_pk(sk_eu_eph_8)),SK_EUICC[]))).
+
+14. The message (devMain[],tidMain[],sign(mk_serverSigned2(tidMain[]),SK_DPauth)) that may be sent on channel LPA2SMDP[] by 10 may be received at input {50}.
+The message (devMain[],dh_pk(sk_eu_eph_8),sign(mk_clientSigned2(tidMain[],dh_pk(sk_eu_eph_8)),SK_EUICC[])) that may be sent on channel LPA2EUICC[] by 13 may be received at input {54}.
+So the message (devMain[],dh_pk(sk_eu_eph_8),sign(mk_clientSigned2(tidMain[],dh_pk(sk_eu_eph_8)),SK_EUICC[])) may be sent on channel LPA2SMDP[] at output {56}.
+mess(LPA2SMDP[],(devMain[],dh_pk(sk_eu_eph_8),sign(mk_clientSigned2(tidMain[],dh_pk(sk_eu_eph_8)),SK_EUICC[]))).
+
+15. The message (devMain[],dh_pk(sk_eu_eph_8),sign(mk_clientSigned2(tidMain[],dh_pk(sk_eu_eph_8)),SK_EUICC[])) that may be sent on channel LPA2SMDP[] by 14 may be received at input {20}.
+So the message (devMain[],mk_bpp_body(tidMain[],dh_pk(sk_eu_eph_8),dh_pk(sk_dp_eph_3),senc(secret_profile[],kdf_enc(dh(sk_dp_eph_3,dh_pk(sk_eu_eph_8))))),mac(mk_bpp_body(tidMain[],dh_pk(sk_eu_eph_8),dh_pk(sk_dp_eph_3),senc(secret_profile[],kdf_enc(dh(sk_dp_eph_3,dh_pk(sk_eu_eph_8))))),kdf_mac(dh(sk_dp_eph_3,dh_pk(sk_eu_eph_8)))),sign(mk_serverSigned3(tidMain[],dh_pk(sk_dp_eph_3)),SK_DPauth)) may be sent on channel LPA2SMDP[] at output {38}.
+mess(LPA2SMDP[],(devMain[],mk_bpp_body(tidMain[],dh_pk(sk_eu_eph_8),dh_pk(sk_dp_eph_3),senc(secret_profile[],kdf_enc(dh(sk_dp_eph_3,dh_pk(sk_eu_eph_8))))),mac(mk_bpp_body(tidMain[],dh_pk(sk_eu_eph_8),dh_pk(sk_dp_eph_3),senc(secret_profile[],kdf_enc(dh(sk_dp_eph_3,dh_pk(sk_eu_eph_8))))),kdf_mac(dh(sk_dp_eph_3,dh_pk(sk_eu_eph_8)))),sign(mk_serverSigned3(tidMain[],dh_pk(sk_dp_eph_3)),SK_DPauth))).
+
+16. The message (devMain[],tidMain[],sign(mk_serverSigned2(tidMain[]),SK_DPauth)) may be sent on channel LPA2SMDP[] at output {19}.
+mess(LPA2SMDP[],(devMain[],tidMain[],sign(mk_serverSigned2(tidMain[]),SK_DPauth))).
+
+17. The message (devMain[],tidMain[],sign(mk_serverSigned2(tidMain[]),SK_DPauth)) that may be sent on channel LPA2SMDP[] by 16 may be received at input {50}.
+So the message (t_prepDownload,devMain[],tidMain[],sign(mk_serverSigned2(tidMain[]),SK_DPauth)) may be sent on channel LPA2EUICC[] at output {53}.
+mess(LPA2EUICC[],(t_prepDownload,devMain[],tidMain[],sign(mk_serverSigned2(tidMain[]),SK_DPauth))).
+
+18. The message (devMain[],tidMain[],sign(mk_serverSigned2(tidMain[]),SK_DPauth)) may be sent on channel LPA2SMDP[] at output {19}.
+mess(LPA2SMDP[],(devMain[],tidMain[],sign(mk_serverSigned2(tidMain[]),SK_DPauth))).
+
+19. The message (devMain[],tidMain[],sign(mk_serverSigned2(tidMain[]),SK_DPauth)) may be sent on channel LPA2SMDP[] at output {19}.
+mess(LPA2SMDP[],(devMain[],tidMain[],sign(mk_serverSigned2(tidMain[]),SK_DPauth))).
+
+20. The message (devMain[],tidMain[],sign(mk_serverSigned2(tidMain[]),SK_DPauth)) that may be sent on channel LPA2SMDP[] by 19 may be received at input {50}.
+So the message (t_prepDownload,devMain[],tidMain[],sign(mk_serverSigned2(tidMain[]),SK_DPauth)) may be sent on channel LPA2EUICC[] at output {53}.
+mess(LPA2EUICC[],(t_prepDownload,devMain[],tidMain[],sign(mk_serverSigned2(tidMain[]),SK_DPauth))).
+
+21. The message (t_prepDownload,devMain[],tidMain[],sign(mk_serverSigned2(tidMain[]),SK_DPauth)) that may be sent on channel LPA2EUICC[] by 20 may be received at input {71}.
+So the message (devMain[],dh_pk(sk_eu_eph_7),sign(mk_clientSigned2(tidMain[],dh_pk(sk_eu_eph_7)),SK_EUICC[])) may be sent on channel LPA2EUICC[] at output {82}.
+mess(LPA2EUICC[],(devMain[],dh_pk(sk_eu_eph_7),sign(mk_clientSigned2(tidMain[],dh_pk(sk_eu_eph_7)),SK_EUICC[]))).
+
+22. The message (devMain[],tidMain[],sign(mk_serverSigned2(tidMain[]),SK_DPauth)) may be sent on channel LPA2SMDP[] at output {19}.
+mess(LPA2SMDP[],(devMain[],tidMain[],sign(mk_serverSigned2(tidMain[]),SK_DPauth))).
+
+23. The message (devMain[],tidMain[],sign(mk_serverSigned2(tidMain[]),SK_DPauth)) may be sent on channel LPA2SMDP[] at output {19}.
+mess(LPA2SMDP[],(devMain[],tidMain[],sign(mk_serverSigned2(tidMain[]),SK_DPauth))).
+
+24. The message (devMain[],tidMain[],sign(mk_serverSigned2(tidMain[]),SK_DPauth)) that may be sent on channel LPA2SMDP[] by 23 may be received at input {50}.
+So the message (t_prepDownload,devMain[],tidMain[],sign(mk_serverSigned2(tidMain[]),SK_DPauth)) may be sent on channel LPA2EUICC[] at output {53}.
+mess(LPA2EUICC[],(t_prepDownload,devMain[],tidMain[],sign(mk_serverSigned2(tidMain[]),SK_DPauth))).
+
+25. The message (t_prepDownload,devMain[],tidMain[],sign(mk_serverSigned2(tidMain[]),SK_DPauth)) that may be sent on channel LPA2EUICC[] by 24 may be received at input {71}.
+So the message (devMain[],dh_pk(sk_eu_eph_1),sign(mk_clientSigned2(tidMain[],dh_pk(sk_eu_eph_1)),SK_EUICC[])) may be sent on channel LPA2EUICC[] at output {82}.
+mess(LPA2EUICC[],(devMain[],dh_pk(sk_eu_eph_1),sign(mk_clientSigned2(tidMain[],dh_pk(sk_eu_eph_1)),SK_EUICC[]))).
+
+26. The message (devMain[],tidMain[],sign(mk_serverSigned2(tidMain[]),SK_DPauth)) that may be sent on channel LPA2SMDP[] by 22 may be received at input {50}.
+The message (devMain[],dh_pk(sk_eu_eph_1),sign(mk_clientSigned2(tidMain[],dh_pk(sk_eu_eph_1)),SK_EUICC[])) that may be sent on channel LPA2EUICC[] by 25 may be received at input {54}.
+So the message (devMain[],dh_pk(sk_eu_eph_1),sign(mk_clientSigned2(tidMain[],dh_pk(sk_eu_eph_1)),SK_EUICC[])) may be sent on channel LPA2SMDP[] at output {56}.
+mess(LPA2SMDP[],(devMain[],dh_pk(sk_eu_eph_1),sign(mk_clientSigned2(tidMain[],dh_pk(sk_eu_eph_1)),SK_EUICC[]))).
+
+27. The message (devMain[],dh_pk(sk_eu_eph_1),sign(mk_clientSigned2(tidMain[],dh_pk(sk_eu_eph_1)),SK_EUICC[])) that may be sent on channel LPA2SMDP[] by 26 may be received at input {20}.
+So the message (devMain[],mk_bpp_body(tidMain[],dh_pk(sk_eu_eph_1),dh_pk(sk_dp_eph_1),senc(secret_profile[],kdf_enc(dh(sk_dp_eph_1,dh_pk(sk_eu_eph_1))))),mac(mk_bpp_body(tidMain[],dh_pk(sk_eu_eph_1),dh_pk(sk_dp_eph_1),senc(secret_profile[],kdf_enc(dh(sk_dp_eph_1,dh_pk(sk_eu_eph_1))))),kdf_mac(dh(sk_dp_eph_1,dh_pk(sk_eu_eph_1)))),sign(mk_serverSigned3(tidMain[],dh_pk(sk_dp_eph_1)),SK_DPauth)) may be sent on channel LPA2SMDP[] at output {38}.
+mess(LPA2SMDP[],(devMain[],mk_bpp_body(tidMain[],dh_pk(sk_eu_eph_1),dh_pk(sk_dp_eph_1),senc(secret_profile[],kdf_enc(dh(sk_dp_eph_1,dh_pk(sk_eu_eph_1))))),mac(mk_bpp_body(tidMain[],dh_pk(sk_eu_eph_1),dh_pk(sk_dp_eph_1),senc(secret_profile[],kdf_enc(dh(sk_dp_eph_1,dh_pk(sk_eu_eph_1))))),kdf_mac(dh(sk_dp_eph_1,dh_pk(sk_eu_eph_1)))),sign(mk_serverSigned3(tidMain[],dh_pk(sk_dp_eph_1)),SK_DPauth))).
+
+28. The message (devMain[],tidMain[],sign(mk_serverSigned2(tidMain[]),SK_DPauth)) that may be sent on channel LPA2SMDP[] by 18 may be received at input {50}.
+The message (devMain[],dh_pk(sk_eu_eph_7),sign(mk_clientSigned2(tidMain[],dh_pk(sk_eu_eph_7)),SK_EUICC[])) that may be sent on channel LPA2EUICC[] by 21 may be received at input {54}.
+The message (devMain[],mk_bpp_body(tidMain[],dh_pk(sk_eu_eph_1),dh_pk(sk_dp_eph_1),senc(secret_profile[],kdf_enc(dh(sk_dp_eph_1,dh_pk(sk_eu_eph_1))))),mac(mk_bpp_body(tidMain[],dh_pk(sk_eu_eph_1),dh_pk(sk_dp_eph_1),senc(secret_profile[],kdf_enc(dh(sk_dp_eph_1,dh_pk(sk_eu_eph_1))))),kdf_mac(dh(sk_dp_eph_1,dh_pk(sk_eu_eph_1)))),sign(mk_serverSigned3(tidMain[],dh_pk(sk_dp_eph_1)),SK_DPauth)) that may be sent on channel LPA2SMDP[] by 27 may be received at input {57}.
+So the message (t_loadBPP,devMain[],mk_bpp_body(tidMain[],dh_pk(sk_eu_eph_1),dh_pk(sk_dp_eph_1),senc(secret_profile[],kdf_enc(dh(sk_dp_eph_1,dh_pk(sk_eu_eph_1))))),mac(mk_bpp_body(tidMain[],dh_pk(sk_eu_eph_1),dh_pk(sk_dp_eph_1),senc(secret_profile[],kdf_enc(dh(sk_dp_eph_1,dh_pk(sk_eu_eph_1))))),kdf_mac(dh(sk_dp_eph_1,dh_pk(sk_eu_eph_1)))),sign(mk_serverSigned3(tidMain[],dh_pk(sk_dp_eph_1)),SK_DPauth)) may be sent on channel LPA2EUICC[] at output {59}.
+mess(LPA2EUICC[],(t_loadBPP,devMain[],mk_bpp_body(tidMain[],dh_pk(sk_eu_eph_1),dh_pk(sk_dp_eph_1),senc(secret_profile[],kdf_enc(dh(sk_dp_eph_1,dh_pk(sk_eu_eph_1))))),mac(mk_bpp_body(tidMain[],dh_pk(sk_eu_eph_1),dh_pk(sk_dp_eph_1),senc(secret_profile[],kdf_enc(dh(sk_dp_eph_1,dh_pk(sk_eu_eph_1))))),kdf_mac(dh(sk_dp_eph_1,dh_pk(sk_eu_eph_1)))),sign(mk_serverSigned3(tidMain[],dh_pk(sk_dp_eph_1)),SK_DPauth))).
+
+29. The message (t_prepDownload,devMain[],tidMain[],sign(mk_serverSigned2(tidMain[]),SK_DPauth)) that may be sent on channel LPA2EUICC[] by 17 may be received at input {71}.
+The message (t_loadBPP,devMain[],mk_bpp_body(tidMain[],dh_pk(sk_eu_eph_1),dh_pk(sk_dp_eph_1),senc(secret_profile[],kdf_enc(dh(sk_dp_eph_1,dh_pk(sk_eu_eph_1))))),mac(mk_bpp_body(tidMain[],dh_pk(sk_eu_eph_1),dh_pk(sk_dp_eph_1),senc(secret_profile[],kdf_enc(dh(sk_dp_eph_1,dh_pk(sk_eu_eph_1))))),kdf_mac(dh(sk_dp_eph_1,dh_pk(sk_eu_eph_1)))),sign(mk_serverSigned3(tidMain[],dh_pk(sk_dp_eph_1)),SK_DPauth)) that may be sent on channel LPA2EUICC[] by 28 may be received at input {83}.
+The event EUICC_PROFILE_INSTALLED(devMain[],tidMain[],secret_profile[],iccid_3) (with occurrence name @occ96_2) may be executed at {96}.
+So the message (devMain[],tidMain[],iccid_3,sign(mk_install_result(tidMain[],iccid_3),SK_EUICC[])) may be sent on channel LPA2EUICC[] at output {99}.
+mess(LPA2EUICC[],(devMain[],tidMain[],iccid_3,sign(mk_install_result(tidMain[],iccid_3),SK_EUICC[]))).
+
+30. The message (devMain[],tidMain[],sign(mk_serverSigned2(tidMain[]),SK_DPauth)) that may be sent on channel LPA2SMDP[] by 6 may be received at input {50}.
+The message (devMain[],dh_pk(sk_eu_eph_9),sign(mk_clientSigned2(tidMain[],dh_pk(sk_eu_eph_9)),SK_EUICC[])) that may be sent on channel LPA2EUICC[] by 9 may be received at input {54}.
+The message (devMain[],mk_bpp_body(tidMain[],dh_pk(sk_eu_eph_8),dh_pk(sk_dp_eph_3),senc(secret_profile[],kdf_enc(dh(sk_dp_eph_3,dh_pk(sk_eu_eph_8))))),mac(mk_bpp_body(tidMain[],dh_pk(sk_eu_eph_8),dh_pk(sk_dp_eph_3),senc(secret_profile[],kdf_enc(dh(sk_dp_eph_3,dh_pk(sk_eu_eph_8))))),kdf_mac(dh(sk_dp_eph_3,dh_pk(sk_eu_eph_8)))),sign(mk_serverSigned3(tidMain[],dh_pk(sk_dp_eph_3)),SK_DPauth)) that may be sent on channel LPA2SMDP[] by 15 may be received at input {57}.
+The message (devMain[],tidMain[],iccid_3,sign(mk_install_result(tidMain[],iccid_3),SK_EUICC[])) that may be sent on channel LPA2EUICC[] by 29 may be received at input {60}.
+So the message (devMain[],tidMain[],iccid_3,sign(mk_install_result(tidMain[],iccid_3),SK_EUICC[])) may be sent on channel LPA2SMDP[] at output {62}.
+mess(LPA2SMDP[],(devMain[],tidMain[],iccid_3,sign(mk_install_result(tidMain[],iccid_3),SK_EUICC[]))).
+
+31. The message (devMain[],dh_pk(sk_eu_eph_3),sign(mk_clientSigned2(tidMain[],dh_pk(sk_eu_eph_3)),SK_EUICC[])) that may be sent on channel LPA2SMDP[] by 5 may be received at input {20}.
+The message (devMain[],tidMain[],iccid_3,sign(mk_install_result(tidMain[],iccid_3),SK_EUICC[])) that may be sent on channel LPA2SMDP[] by 30 may be received at input {39}.
+So event SMDP_INSTALL_CONFIRMED(devMain[],tidMain[],iccid_3) may be executed at {46} in session @sid_5.
+inj-event(SMDP_INSTALL_CONFIRMED(devMain[],tidMain[],iccid_3),@occ46_2).
+
+32. By 31, inj-event(SMDP_INSTALL_CONFIRMED(devMain[],tidMain[],iccid_3),@occ46_2).
+The goal is reached, represented in the following fact:
+inj-event(SMDP_INSTALL_CONFIRMED(devMain[],tidMain[],iccid_3),@occ46_2).
+
+33. The message (devMain[],tidMain[],sign(mk_serverSigned2(tidMain[]),SK_DPauth)) may be sent on channel LPA2SMDP[] at output {19}.
+mess(LPA2SMDP[],(devMain[],tidMain[],sign(mk_serverSigned2(tidMain[]),SK_DPauth))).
+
+34. The message (devMain[],tidMain[],sign(mk_serverSigned2(tidMain[]),SK_DPauth)) may be sent on channel LPA2SMDP[] at output {19}.
+mess(LPA2SMDP[],(devMain[],tidMain[],sign(mk_serverSigned2(tidMain[]),SK_DPauth))).
+
+35. The message (devMain[],tidMain[],sign(mk_serverSigned2(tidMain[]),SK_DPauth)) that may be sent on channel LPA2SMDP[] by 34 may be received at input {50}.
+So the message (t_prepDownload,devMain[],tidMain[],sign(mk_serverSigned2(tidMain[]),SK_DPauth)) may be sent on channel LPA2EUICC[] at output {53}.
+mess(LPA2EUICC[],(t_prepDownload,devMain[],tidMain[],sign(mk_serverSigned2(tidMain[]),SK_DPauth))).
+
+36. The message (t_prepDownload,devMain[],tidMain[],sign(mk_serverSigned2(tidMain[]),SK_DPauth)) that may be sent on channel LPA2EUICC[] by 35 may be received at input {71}.
+So the message (devMain[],dh_pk(sk_eu_eph_2),sign(mk_clientSigned2(tidMain[],dh_pk(sk_eu_eph_2)),SK_EUICC[])) may be sent on channel LPA2EUICC[] at output {82}.
+mess(LPA2EUICC[],(devMain[],dh_pk(sk_eu_eph_2),sign(mk_clientSigned2(tidMain[],dh_pk(sk_eu_eph_2)),SK_EUICC[]))).
+
+37. The message (devMain[],tidMain[],sign(mk_serverSigned2(tidMain[]),SK_DPauth)) that may be sent on channel LPA2SMDP[] by 33 may be received at input {50}.
+The message (devMain[],dh_pk(sk_eu_eph_2),sign(mk_clientSigned2(tidMain[],dh_pk(sk_eu_eph_2)),SK_EUICC[])) that may be sent on channel LPA2EUICC[] by 36 may be received at input {54}.
+So the message (devMain[],dh_pk(sk_eu_eph_2),sign(mk_clientSigned2(tidMain[],dh_pk(sk_eu_eph_2)),SK_EUICC[])) may be sent on channel LPA2SMDP[] at output {56}.
+mess(LPA2SMDP[],(devMain[],dh_pk(sk_eu_eph_2),sign(mk_clientSigned2(tidMain[],dh_pk(sk_eu_eph_2)),SK_EUICC[]))).
+
+38. The message (devMain[],tidMain[],sign(mk_serverSigned2(tidMain[]),SK_DPauth)) may be sent on channel LPA2SMDP[] at output {19}.
+mess(LPA2SMDP[],(devMain[],tidMain[],sign(mk_serverSigned2(tidMain[]),SK_DPauth))).
+
+39. The message (devMain[],tidMain[],sign(mk_serverSigned2(tidMain[]),SK_DPauth)) may be sent on channel LPA2SMDP[] at output {19}.
+mess(LPA2SMDP[],(devMain[],tidMain[],sign(mk_serverSigned2(tidMain[]),SK_DPauth))).
+
+40. The message (devMain[],tidMain[],sign(mk_serverSigned2(tidMain[]),SK_DPauth)) that may be sent on channel LPA2SMDP[] by 39 may be received at input {50}.
+So the message (t_prepDownload,devMain[],tidMain[],sign(mk_serverSigned2(tidMain[]),SK_DPauth)) may be sent on channel LPA2EUICC[] at output {53}.
+mess(LPA2EUICC[],(t_prepDownload,devMain[],tidMain[],sign(mk_serverSigned2(tidMain[]),SK_DPauth))).
+
+41. The message (t_prepDownload,devMain[],tidMain[],sign(mk_serverSigned2(tidMain[]),SK_DPauth)) that may be sent on channel LPA2EUICC[] by 40 may be received at input {71}.
+So the message (devMain[],dh_pk(sk_eu_eph_6),sign(mk_clientSigned2(tidMain[],dh_pk(sk_eu_eph_6)),SK_EUICC[])) may be sent on channel LPA2EUICC[] at output {82}.
+mess(LPA2EUICC[],(devMain[],dh_pk(sk_eu_eph_6),sign(mk_clientSigned2(tidMain[],dh_pk(sk_eu_eph_6)),SK_EUICC[]))).
+
+42. The message (devMain[],tidMain[],sign(mk_serverSigned2(tidMain[]),SK_DPauth)) may be sent on channel LPA2SMDP[] at output {19}.
+mess(LPA2SMDP[],(devMain[],tidMain[],sign(mk_serverSigned2(tidMain[]),SK_DPauth))).
+
+43. The message (devMain[],tidMain[],sign(mk_serverSigned2(tidMain[]),SK_DPauth)) may be sent on channel LPA2SMDP[] at output {19}.
+mess(LPA2SMDP[],(devMain[],tidMain[],sign(mk_serverSigned2(tidMain[]),SK_DPauth))).
+
+44. The message (devMain[],tidMain[],sign(mk_serverSigned2(tidMain[]),SK_DPauth)) that may be sent on channel LPA2SMDP[] by 43 may be received at input {50}.
+So the message (t_prepDownload,devMain[],tidMain[],sign(mk_serverSigned2(tidMain[]),SK_DPauth)) may be sent on channel LPA2EUICC[] at output {53}.
+mess(LPA2EUICC[],(t_prepDownload,devMain[],tidMain[],sign(mk_serverSigned2(tidMain[]),SK_DPauth))).
+
+45. The message (t_prepDownload,devMain[],tidMain[],sign(mk_serverSigned2(tidMain[]),SK_DPauth)) that may be sent on channel LPA2EUICC[] by 44 may be received at input {71}.
+So the message (devMain[],dh_pk(sk_eu_eph_5),sign(mk_clientSigned2(tidMain[],dh_pk(sk_eu_eph_5)),SK_EUICC[])) may be sent on channel LPA2EUICC[] at output {82}.
+mess(LPA2EUICC[],(devMain[],dh_pk(sk_eu_eph_5),sign(mk_clientSigned2(tidMain[],dh_pk(sk_eu_eph_5)),SK_EUICC[]))).
+
+46. The message (devMain[],tidMain[],sign(mk_serverSigned2(tidMain[]),SK_DPauth)) that may be sent on channel LPA2SMDP[] by 42 may be received at input {50}.
+The message (devMain[],dh_pk(sk_eu_eph_5),sign(mk_clientSigned2(tidMain[],dh_pk(sk_eu_eph_5)),SK_EUICC[])) that may be sent on channel LPA2EUICC[] by 45 may be received at input {54}.
+So the message (devMain[],dh_pk(sk_eu_eph_5),sign(mk_clientSigned2(tidMain[],dh_pk(sk_eu_eph_5)),SK_EUICC[])) may be sent on channel LPA2SMDP[] at output {56}.
+mess(LPA2SMDP[],(devMain[],dh_pk(sk_eu_eph_5),sign(mk_clientSigned2(tidMain[],dh_pk(sk_eu_eph_5)),SK_EUICC[]))).
+
+47. The message (devMain[],dh_pk(sk_eu_eph_5),sign(mk_clientSigned2(tidMain[],dh_pk(sk_eu_eph_5)),SK_EUICC[])) that may be sent on channel LPA2SMDP[] by 46 may be received at input {20}.
+So the message (devMain[],mk_bpp_body(tidMain[],dh_pk(sk_eu_eph_5),dh_pk(sk_dp_eph_2),senc(secret_profile[],kdf_enc(dh(sk_dp_eph_2,dh_pk(sk_eu_eph_5))))),mac(mk_bpp_body(tidMain[],dh_pk(sk_eu_eph_5),dh_pk(sk_dp_eph_2),senc(secret_profile[],kdf_enc(dh(sk_dp_eph_2,dh_pk(sk_eu_eph_5))))),kdf_mac(dh(sk_dp_eph_2,dh_pk(sk_eu_eph_5)))),sign(mk_serverSigned3(tidMain[],dh_pk(sk_dp_eph_2)),SK_DPauth)) may be sent on channel LPA2SMDP[] at output {38}.
+mess(LPA2SMDP[],(devMain[],mk_bpp_body(tidMain[],dh_pk(sk_eu_eph_5),dh_pk(sk_dp_eph_2),senc(secret_profile[],kdf_enc(dh(sk_dp_eph_2,dh_pk(sk_eu_eph_5))))),mac(mk_bpp_body(tidMain[],dh_pk(sk_eu_eph_5),dh_pk(sk_dp_eph_2),senc(secret_profile[],kdf_enc(dh(sk_dp_eph_2,dh_pk(sk_eu_eph_5))))),kdf_mac(dh(sk_dp_eph_2,dh_pk(sk_eu_eph_5)))),sign(mk_serverSigned3(tidMain[],dh_pk(sk_dp_eph_2)),SK_DPauth))).
+
+48. The message (devMain[],tidMain[],sign(mk_serverSigned2(tidMain[]),SK_DPauth)) may be sent on channel LPA2SMDP[] at output {19}.
+mess(LPA2SMDP[],(devMain[],tidMain[],sign(mk_serverSigned2(tidMain[]),SK_DPauth))).
+
+49. The message (devMain[],tidMain[],sign(mk_serverSigned2(tidMain[]),SK_DPauth)) that may be sent on channel LPA2SMDP[] by 48 may be received at input {50}.
+So the message (t_prepDownload,devMain[],tidMain[],sign(mk_serverSigned2(tidMain[]),SK_DPauth)) may be sent on channel LPA2EUICC[] at output {53}.
+mess(LPA2EUICC[],(t_prepDownload,devMain[],tidMain[],sign(mk_serverSigned2(tidMain[]),SK_DPauth))).
+
+50. The message (devMain[],tidMain[],sign(mk_serverSigned2(tidMain[]),SK_DPauth)) may be sent on channel LPA2SMDP[] at output {19}.
+mess(LPA2SMDP[],(devMain[],tidMain[],sign(mk_serverSigned2(tidMain[]),SK_DPauth))).
+
+51. The message (devMain[],tidMain[],sign(mk_serverSigned2(tidMain[]),SK_DPauth)) may be sent on channel LPA2SMDP[] at output {19}.
+mess(LPA2SMDP[],(devMain[],tidMain[],sign(mk_serverSigned2(tidMain[]),SK_DPauth))).
+
+52. The message (devMain[],tidMain[],sign(mk_serverSigned2(tidMain[]),SK_DPauth)) that may be sent on channel LPA2SMDP[] by 51 may be received at input {50}.
+So the message (t_prepDownload,devMain[],tidMain[],sign(mk_serverSigned2(tidMain[]),SK_DPauth)) may be sent on channel LPA2EUICC[] at output {53}.
+mess(LPA2EUICC[],(t_prepDownload,devMain[],tidMain[],sign(mk_serverSigned2(tidMain[]),SK_DPauth))).
+
+53. The message (t_prepDownload,devMain[],tidMain[],sign(mk_serverSigned2(tidMain[]),SK_DPauth)) that may be sent on channel LPA2EUICC[] by 52 may be received at input {71}.
+So the message (devMain[],dh_pk(sk_eu_eph_4),sign(mk_clientSigned2(tidMain[],dh_pk(sk_eu_eph_4)),SK_EUICC[])) may be sent on channel LPA2EUICC[] at output {82}.
+mess(LPA2EUICC[],(devMain[],dh_pk(sk_eu_eph_4),sign(mk_clientSigned2(tidMain[],dh_pk(sk_eu_eph_4)),SK_EUICC[]))).
+
+54. The message (devMain[],tidMain[],sign(mk_serverSigned2(tidMain[]),SK_DPauth)) may be sent on channel LPA2SMDP[] at output {19}.
+mess(LPA2SMDP[],(devMain[],tidMain[],sign(mk_serverSigned2(tidMain[]),SK_DPauth))).
+
+55. The message (devMain[],tidMain[],sign(mk_serverSigned2(tidMain[]),SK_DPauth)) may be sent on channel LPA2SMDP[] at output {19}.
+mess(LPA2SMDP[],(devMain[],tidMain[],sign(mk_serverSigned2(tidMain[]),SK_DPauth))).
+
+56. The message (devMain[],tidMain[],sign(mk_serverSigned2(tidMain[]),SK_DPauth)) that may be sent on channel LPA2SMDP[] by 55 may be received at input {50}.
+So the message (t_prepDownload,devMain[],tidMain[],sign(mk_serverSigned2(tidMain[]),SK_DPauth)) may be sent on channel LPA2EUICC[] at output {53}.
+mess(LPA2EUICC[],(t_prepDownload,devMain[],tidMain[],sign(mk_serverSigned2(tidMain[]),SK_DPauth))).
+
+57. The message (t_prepDownload,devMain[],tidMain[],sign(mk_serverSigned2(tidMain[]),SK_DPauth)) that may be sent on channel LPA2EUICC[] by 56 may be received at input {71}.
+So the message (devMain[],dh_pk(sk_eu_eph_1),sign(mk_clientSigned2(tidMain[],dh_pk(sk_eu_eph_1)),SK_EUICC[])) may be sent on channel LPA2EUICC[] at output {82}.
+mess(LPA2EUICC[],(devMain[],dh_pk(sk_eu_eph_1),sign(mk_clientSigned2(tidMain[],dh_pk(sk_eu_eph_1)),SK_EUICC[]))).
+
+58. The message (devMain[],tidMain[],sign(mk_serverSigned2(tidMain[]),SK_DPauth)) that may be sent on channel LPA2SMDP[] by 54 may be received at input {50}.
+The message (devMain[],dh_pk(sk_eu_eph_1),sign(mk_clientSigned2(tidMain[],dh_pk(sk_eu_eph_1)),SK_EUICC[])) that may be sent on channel LPA2EUICC[] by 57 may be received at input {54}.
+So the message (devMain[],dh_pk(sk_eu_eph_1),sign(mk_clientSigned2(tidMain[],dh_pk(sk_eu_eph_1)),SK_EUICC[])) may be sent on channel LPA2SMDP[] at output {56}.
+mess(LPA2SMDP[],(devMain[],dh_pk(sk_eu_eph_1),sign(mk_clientSigned2(tidMain[],dh_pk(sk_eu_eph_1)),SK_EUICC[]))).
+
+59. The message (devMain[],dh_pk(sk_eu_eph_1),sign(mk_clientSigned2(tidMain[],dh_pk(sk_eu_eph_1)),SK_EUICC[])) that may be sent on channel LPA2SMDP[] by 58 may be received at input {20}.
+So the message (devMain[],mk_bpp_body(tidMain[],dh_pk(sk_eu_eph_1),dh_pk(sk_dp_eph_1),senc(secret_profile[],kdf_enc(dh(sk_dp_eph_1,dh_pk(sk_eu_eph_1))))),mac(mk_bpp_body(tidMain[],dh_pk(sk_eu_eph_1),dh_pk(sk_dp_eph_1),senc(secret_profile[],kdf_enc(dh(sk_dp_eph_1,dh_pk(sk_eu_eph_1))))),kdf_mac(dh(sk_dp_eph_1,dh_pk(sk_eu_eph_1)))),sign(mk_serverSigned3(tidMain[],dh_pk(sk_dp_eph_1)),SK_DPauth)) may be sent on channel LPA2SMDP[] at output {38}.
+mess(LPA2SMDP[],(devMain[],mk_bpp_body(tidMain[],dh_pk(sk_eu_eph_1),dh_pk(sk_dp_eph_1),senc(secret_profile[],kdf_enc(dh(sk_dp_eph_1,dh_pk(sk_eu_eph_1))))),mac(mk_bpp_body(tidMain[],dh_pk(sk_eu_eph_1),dh_pk(sk_dp_eph_1),senc(secret_profile[],kdf_enc(dh(sk_dp_eph_1,dh_pk(sk_eu_eph_1))))),kdf_mac(dh(sk_dp_eph_1,dh_pk(sk_eu_eph_1)))),sign(mk_serverSigned3(tidMain[],dh_pk(sk_dp_eph_1)),SK_DPauth))).
+
+60. The message (devMain[],tidMain[],sign(mk_serverSigned2(tidMain[]),SK_DPauth)) that may be sent on channel LPA2SMDP[] by 50 may be received at input {50}.
+The message (devMain[],dh_pk(sk_eu_eph_4),sign(mk_clientSigned2(tidMain[],dh_pk(sk_eu_eph_4)),SK_EUICC[])) that may be sent on channel LPA2EUICC[] by 53 may be received at input {54}.
+The message (devMain[],mk_bpp_body(tidMain[],dh_pk(sk_eu_eph_1),dh_pk(sk_dp_eph_1),senc(secret_profile[],kdf_enc(dh(sk_dp_eph_1,dh_pk(sk_eu_eph_1))))),mac(mk_bpp_body(tidMain[],dh_pk(sk_eu_eph_1),dh_pk(sk_dp_eph_1),senc(secret_profile[],kdf_enc(dh(sk_dp_eph_1,dh_pk(sk_eu_eph_1))))),kdf_mac(dh(sk_dp_eph_1,dh_pk(sk_eu_eph_1)))),sign(mk_serverSigned3(tidMain[],dh_pk(sk_dp_eph_1)),SK_DPauth)) that may be sent on channel LPA2SMDP[] by 59 may be received at input {57}.
+So the message (t_loadBPP,devMain[],mk_bpp_body(tidMain[],dh_pk(sk_eu_eph_1),dh_pk(sk_dp_eph_1),senc(secret_profile[],kdf_enc(dh(sk_dp_eph_1,dh_pk(sk_eu_eph_1))))),mac(mk_bpp_body(tidMain[],dh_pk(sk_eu_eph_1),dh_pk(sk_dp_eph_1),senc(secret_profile[],kdf_enc(dh(sk_dp_eph_1,dh_pk(sk_eu_eph_1))))),kdf_mac(dh(sk_dp_eph_1,dh_pk(sk_eu_eph_1)))),sign(mk_serverSigned3(tidMain[],dh_pk(sk_dp_eph_1)),SK_DPauth)) may be sent on channel LPA2EUICC[] at output {59}.
+mess(LPA2EUICC[],(t_loadBPP,devMain[],mk_bpp_body(tidMain[],dh_pk(sk_eu_eph_1),dh_pk(sk_dp_eph_1),senc(secret_profile[],kdf_enc(dh(sk_dp_eph_1,dh_pk(sk_eu_eph_1))))),mac(mk_bpp_body(tidMain[],dh_pk(sk_eu_eph_1),dh_pk(sk_dp_eph_1),senc(secret_profile[],kdf_enc(dh(sk_dp_eph_1,dh_pk(sk_eu_eph_1))))),kdf_mac(dh(sk_dp_eph_1,dh_pk(sk_eu_eph_1)))),sign(mk_serverSigned3(tidMain[],dh_pk(sk_dp_eph_1)),SK_DPauth))).
+
+61. The message (t_prepDownload,devMain[],tidMain[],sign(mk_serverSigned2(tidMain[]),SK_DPauth)) that may be sent on channel LPA2EUICC[] by 49 may be received at input {71}.
+The message (t_loadBPP,devMain[],mk_bpp_body(tidMain[],dh_pk(sk_eu_eph_1),dh_pk(sk_dp_eph_1),senc(secret_profile[],kdf_enc(dh(sk_dp_eph_1,dh_pk(sk_eu_eph_1))))),mac(mk_bpp_body(tidMain[],dh_pk(sk_eu_eph_1),dh_pk(sk_dp_eph_1),senc(secret_profile[],kdf_enc(dh(sk_dp_eph_1,dh_pk(sk_eu_eph_1))))),kdf_mac(dh(sk_dp_eph_1,dh_pk(sk_eu_eph_1)))),sign(mk_serverSigned3(tidMain[],dh_pk(sk_dp_eph_1)),SK_DPauth)) that may be sent on channel LPA2EUICC[] by 60 may be received at input {83}.
+The event EUICC_PROFILE_INSTALLED(devMain[],tidMain[],secret_profile[],iccid_3) (with occurrence name @occ96_2) may be executed at {96}.
+So the message (devMain[],tidMain[],iccid_3,sign(mk_install_result(tidMain[],iccid_3),SK_EUICC[])) may be sent on channel LPA2EUICC[] at output {99}.
+mess(LPA2EUICC[],(devMain[],tidMain[],iccid_3,sign(mk_install_result(tidMain[],iccid_3),SK_EUICC[]))).
+
+62. The message (devMain[],tidMain[],sign(mk_serverSigned2(tidMain[]),SK_DPauth)) that may be sent on channel LPA2SMDP[] by 38 may be received at input {50}.
+The message (devMain[],dh_pk(sk_eu_eph_6),sign(mk_clientSigned2(tidMain[],dh_pk(sk_eu_eph_6)),SK_EUICC[])) that may be sent on channel LPA2EUICC[] by 41 may be received at input {54}.
+The message (devMain[],mk_bpp_body(tidMain[],dh_pk(sk_eu_eph_5),dh_pk(sk_dp_eph_2),senc(secret_profile[],kdf_enc(dh(sk_dp_eph_2,dh_pk(sk_eu_eph_5))))),mac(mk_bpp_body(tidMain[],dh_pk(sk_eu_eph_5),dh_pk(sk_dp_eph_2),senc(secret_profile[],kdf_enc(dh(sk_dp_eph_2,dh_pk(sk_eu_eph_5))))),kdf_mac(dh(sk_dp_eph_2,dh_pk(sk_eu_eph_5)))),sign(mk_serverSigned3(tidMain[],dh_pk(sk_dp_eph_2)),SK_DPauth)) that may be sent on channel LPA2SMDP[] by 47 may be received at input {57}.
+The message (devMain[],tidMain[],iccid_3,sign(mk_install_result(tidMain[],iccid_3),SK_EUICC[])) that may be sent on channel LPA2EUICC[] by 61 may be received at input {60}.
+So the message (devMain[],tidMain[],iccid_3,sign(mk_install_result(tidMain[],iccid_3),SK_EUICC[])) may be sent on channel LPA2SMDP[] at output {62}.
+mess(LPA2SMDP[],(devMain[],tidMain[],iccid_3,sign(mk_install_result(tidMain[],iccid_3),SK_EUICC[]))).
+
+63. The message (devMain[],dh_pk(sk_eu_eph_2),sign(mk_clientSigned2(tidMain[],dh_pk(sk_eu_eph_2)),SK_EUICC[])) that may be sent on channel LPA2SMDP[] by 37 may be received at input {20}.
+The message (devMain[],tidMain[],iccid_3,sign(mk_install_result(tidMain[],iccid_3),SK_EUICC[])) that may be sent on channel LPA2SMDP[] by 62 may be received at input {39}.
+So event SMDP_INSTALL_CONFIRMED(devMain[],tidMain[],iccid_3) may be executed at {46} in session @sid_3.
+inj-event(SMDP_INSTALL_CONFIRMED(devMain[],tidMain[],iccid_3),@occ46_1).
+
+64. By 63, inj-event(SMDP_INSTALL_CONFIRMED(devMain[],tidMain[],iccid_3),@occ46_1).
+The goal is reached, represented in the following fact:
+inj-event(SMDP_INSTALL_CONFIRMED(devMain[],tidMain[],iccid_3),@occ46_1).
+
+65. By 64, inj-event(SMDP_INSTALL_CONFIRMED(devMain[],tidMain[],iccid_3),@occ46_1).
+By 32, inj-event(SMDP_INSTALL_CONFIRMED(devMain[],tidMain[],iccid_3),@occ46_2).
+We have @occ46_1 ≠ @occ46_2.
+The goals for injectivity are reached, combined in the following fact:
+inj-event(SMDP_INSTALL_CONFIRMED(devMain[],tidMain[],iccid_3),@occ46_1) && inj-event(SMDP_INSTALL_CONFIRMED(devMain[],tidMain[],iccid_3),@occ46_2).
+
+
+RESULT inj-event(SMDP_INSTALL_CONFIRMED(dev_3,tid_2,iccid_3)) ==> inj-event(EUICC_PROFILE_INSTALLED(dev_3,tid_2,profile_2,iccid_3)) cannot be proved.
+RESULT (but event(SMDP_INSTALL_CONFIRMED(dev_3,tid_2,iccid_3)) ==> event(EUICC_PROFILE_INSTALLED(dev_3,tid_2,profile_2,iccid_3)) is true.)
+
+--------------------------------------------------------------
+Verification summary:
+
+Query not attacker_p1(secret_profile[]) is true.
+
+Query not attacker_p1(secret_profile[]) is true.
+
+Query inj-event(EUICC_PROFILE_INSTALLED(dev_3,tid_2,profile_2,iccid_3)) ==> inj-event(SMDP_BOUND_PROFILE(dev_3,tid_2,profile_2)) is true.
+
+Query inj-event(SMDP_INSTALL_CONFIRMED(dev_3,tid_2,iccid_3)) ==> inj-event(EUICC_PROFILE_INSTALLED(dev_3,tid_2,profile_2,iccid_3)) cannot be proved.
+
+--------------------------------------------------------------

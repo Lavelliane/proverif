@@ -1,0 +1,188 @@
+Process 0 (that is, the initial process):
+{1}new devMain: Id_t;
+{2}new tidMain: Tid_t;
+{3}new SK_EUICC_KEM: KEMsk_t;
+{4}let PK_EUICC_KEM: KEMpk_t = kem_pk(SK_EUICC_KEM) in
+{5}let PK_SMDP_KEM: KEMpk_t = kem_pk(SK_SMDP_KEM) in
+(
+    {6}!
+    {7}let dev: Id_t = devMain in
+    {8}let tid: Tid_t = tidMain in
+    {9}let profile: Profile_t = secret_profile in
+    {10}let PK_SMDP_KEM_1: KEMpk_t = kem_pk(SK_SMDP_KEM) in
+    {11}new r_prepare: KEMcoin_t;
+    {12}let CT_PREPARE: bitstring = kem_enc(PK_EUICC_KEM,r_prepare) in
+    {13}let SS_PREPARE: KEMss_t = kem_ss(PK_EUICC_KEM,r_prepare) in
+    {14}let k_prepare: SymKey_t = kdf_bind(SS_PREPARE,tid) in
+    {15}let prepare_mac: bitstring = mac(k_prepare,msg_prepare(tid)) in
+    {16}out(ES9, (tid,CT_PREPARE,prepare_mac));
+    {17}in(ES9, (tid3: Tid_t,PK_EU_PROFILE: KEMpk_t,CT_RESP: bitstring,resp_mac: bitstring));
+    {18}if (tid3 = tid) then
+    {19}let SS_RESP: KEMss_t = kem_dec(CT_RESP,SK_SMDP_KEM) in
+    {20}let k_resp: SymKey_t = kdf_bind(SS_RESP,tid) in
+    {21}let expected_resp_mac: bitstring = mac(k_resp,msg_response(tid,PK_EU_PROFILE)) in
+    {22}if (resp_mac = expected_resp_mac) then
+    {23}new r_profile: KEMcoin_t;
+    {24}let CT_PROFILE: bitstring = kem_enc(PK_EU_PROFILE,r_profile) in
+    {25}let SS_PROFILE: KEMss_t = kem_ss(PK_EU_PROFILE,r_profile) in
+    {26}let k_profile: SymKey_t = kdf_profile(SS_PROFILE) in
+    {27}let encrypted_profile: bitstring = senc(profile,k_profile) in
+    {28}let profile_mac_out: bitstring = mac(k_profile,msg_profile(tid,CT_PROFILE,encrypted_profile)) in
+    {29}event SMDP_BOUND_PROFILE(dev,tid,profile);
+    {30}out(ES9, (tid,CT_PROFILE,encrypted_profile,profile_mac_out));
+    {31}in(ES9, (tid4: Tid_t,iccid: ICCID_t,CT_INSTALL: bitstring,install_mac: bitstring));
+    {32}if (tid4 = tid) then
+    {33}let SS_INSTALL: KEMss_t = kem_dec(CT_INSTALL,SK_SMDP_KEM) in
+    {34}let k_install: SymKey_t = kdf_bind(SS_INSTALL,tid) in
+    {35}let expected_install_mac: bitstring = mac(k_install,msg_install(tid,iccid)) in
+    {36}if (install_mac = expected_install_mac) then
+    {37}event SMDP_INSTALL_CONFIRMED(dev,tid,iccid)
+) | (
+    {38}!
+    {39}let dev_1: Id_t = devMain in
+    {40}let tid_1: Tid_t = tidMain in
+    {41}let SK_EUICC_KEM_1: KEMsk_t = SK_EUICC_KEM in
+    {42}in(LPA2EUICC, (tid_pd: Tid_t,CT_PREPARE_1: bitstring,prepare_mac_1: bitstring));
+    {43}if (tid_pd = tid_1) then
+    {44}let SS_PREPARE_1: KEMss_t = kem_dec(CT_PREPARE_1,SK_EUICC_KEM_1) in
+    {45}let k_prepare_1: SymKey_t = kdf_bind(SS_PREPARE_1,tid_1) in
+    {46}let expected_prepare_mac: bitstring = mac(k_prepare_1,msg_prepare(tid_1)) in
+    {47}if (prepare_mac_1 = expected_prepare_mac) then
+    {48}new SK_EU_PROFILE: KEMsk_t;
+    {49}let PK_EU_PROFILE_1: KEMpk_t = kem_pk(SK_EU_PROFILE) in
+    {50}new r_resp: KEMcoin_t;
+    {51}let CT_RESP_1: bitstring = kem_enc(PK_SMDP_KEM,r_resp) in
+    {52}let SS_RESP_1: KEMss_t = kem_ss(PK_SMDP_KEM,r_resp) in
+    {53}let k_resp_1: SymKey_t = kdf_bind(SS_RESP_1,tid_1) in
+    {54}let resp_mac_1: bitstring = mac(k_resp_1,msg_response(tid_1,PK_EU_PROFILE_1)) in
+    {55}out(LPA2EUICC, (tid_1,PK_EU_PROFILE_1,CT_RESP_1,resp_mac_1));
+    {56}in(LPA2EUICC, (tid_bpp: Tid_t,CT_PROFILE_1: bitstring,encrypted_prof: bitstring,profile_mac_in: bitstring));
+    {57}if (tid_bpp = tid_1) then
+    {58}let SS_PROFILE_1: KEMss_t = kem_dec(CT_PROFILE_1,SK_EU_PROFILE) in
+    {59}let k_profile_1: SymKey_t = kdf_profile(SS_PROFILE_1) in
+    {60}let expected_profile_mac: bitstring = mac(k_profile_1,msg_profile(tid_1,CT_PROFILE_1,encrypted_prof)) in
+    {61}if (profile_mac_in = expected_profile_mac) then
+    {62}let profile_1: Profile_t = sdec(encrypted_prof,k_profile_1) in
+    {63}new iccid_1: ICCID_t;
+    {64}event EUICC_PROFILE_INSTALLED(dev_1,tid_1,profile_1,iccid_1);
+    {65}new r_install: KEMcoin_t;
+    {66}let CT_INSTALL_1: bitstring = kem_enc(PK_SMDP_KEM,r_install) in
+    {67}let SS_INSTALL_1: KEMss_t = kem_ss(PK_SMDP_KEM,r_install) in
+    {68}let k_install_1: SymKey_t = kdf_bind(SS_INSTALL_1,tid_1) in
+    {69}let install_mac_1: bitstring = mac(k_install_1,msg_install(tid_1,iccid_1)) in
+    {70}out(LPA2EUICC, (tid_1,iccid_1,CT_INSTALL_1,install_mac_1))
+) | (
+    {71}phase 1;
+    {72}out(c, SK_SMDP_KEM)
+)
+
+--  Process 1 (that is, process 0, with let moved downwards):
+{1}new devMain: Id_t;
+{2}new tidMain: Tid_t;
+{3}new SK_EUICC_KEM: KEMsk_t;
+(
+    {6}!
+    {11}new r_prepare: KEMcoin_t;
+    {4}let PK_EUICC_KEM: KEMpk_t = kem_pk(SK_EUICC_KEM) in
+    {13}let SS_PREPARE: KEMss_t = kem_ss(PK_EUICC_KEM,r_prepare) in
+    {8}let tid: Tid_t = tidMain in
+    {14}let k_prepare: SymKey_t = kdf_bind(SS_PREPARE,tid) in
+    {15}let prepare_mac: bitstring = mac(k_prepare,msg_prepare(tid)) in
+    {12}let CT_PREPARE: bitstring = kem_enc(PK_EUICC_KEM,r_prepare) in
+    {16}out(ES9, (tid,CT_PREPARE,prepare_mac));
+    {17}in(ES9, (tid3: Tid_t,PK_EU_PROFILE: KEMpk_t,CT_RESP: bitstring,resp_mac: bitstring));
+    {18}if (tid3 = tid) then
+    {19}let SS_RESP: KEMss_t = kem_dec(CT_RESP,SK_SMDP_KEM) in
+    {20}let k_resp: SymKey_t = kdf_bind(SS_RESP,tid) in
+    {21}let expected_resp_mac: bitstring = mac(k_resp,msg_response(tid,PK_EU_PROFILE)) in
+    {22}if (resp_mac = expected_resp_mac) then
+    {23}new r_profile: KEMcoin_t;
+    {9}let profile: Profile_t = secret_profile in
+    {7}let dev: Id_t = devMain in
+    {29}event SMDP_BOUND_PROFILE(dev,tid,profile);
+    {25}let SS_PROFILE: KEMss_t = kem_ss(PK_EU_PROFILE,r_profile) in
+    {26}let k_profile: SymKey_t = kdf_profile(SS_PROFILE) in
+    {27}let encrypted_profile: bitstring = senc(profile,k_profile) in
+    {24}let CT_PROFILE: bitstring = kem_enc(PK_EU_PROFILE,r_profile) in
+    {28}let profile_mac_out: bitstring = mac(k_profile,msg_profile(tid,CT_PROFILE,encrypted_profile)) in
+    {30}out(ES9, (tid,CT_PROFILE,encrypted_profile,profile_mac_out));
+    {31}in(ES9, (tid4: Tid_t,iccid: ICCID_t,CT_INSTALL: bitstring,install_mac: bitstring));
+    {32}if (tid4 = tid) then
+    {33}let SS_INSTALL: KEMss_t = kem_dec(CT_INSTALL,SK_SMDP_KEM) in
+    {34}let k_install: SymKey_t = kdf_bind(SS_INSTALL,tid) in
+    {35}let expected_install_mac: bitstring = mac(k_install,msg_install(tid,iccid)) in
+    {36}if (install_mac = expected_install_mac) then
+    {37}event SMDP_INSTALL_CONFIRMED(dev,tid,iccid)
+) | (
+    {38}!
+    {42}in(LPA2EUICC, (tid_pd: Tid_t,CT_PREPARE_1: bitstring,prepare_mac_1: bitstring));
+    {40}let tid_1: Tid_t = tidMain in
+    {43}if (tid_pd = tid_1) then
+    {41}let SK_EUICC_KEM_1: KEMsk_t = SK_EUICC_KEM in
+    {44}let SS_PREPARE_1: KEMss_t = kem_dec(CT_PREPARE_1,SK_EUICC_KEM_1) in
+    {45}let k_prepare_1: SymKey_t = kdf_bind(SS_PREPARE_1,tid_1) in
+    {46}let expected_prepare_mac: bitstring = mac(k_prepare_1,msg_prepare(tid_1)) in
+    {47}if (prepare_mac_1 = expected_prepare_mac) then
+    {48}new SK_EU_PROFILE: KEMsk_t;
+    {50}new r_resp: KEMcoin_t;
+    {5}let PK_SMDP_KEM: KEMpk_t = kem_pk(SK_SMDP_KEM) in
+    {52}let SS_RESP_1: KEMss_t = kem_ss(PK_SMDP_KEM,r_resp) in
+    {53}let k_resp_1: SymKey_t = kdf_bind(SS_RESP_1,tid_1) in
+    {49}let PK_EU_PROFILE_1: KEMpk_t = kem_pk(SK_EU_PROFILE) in
+    {54}let resp_mac_1: bitstring = mac(k_resp_1,msg_response(tid_1,PK_EU_PROFILE_1)) in
+    {51}let CT_RESP_1: bitstring = kem_enc(PK_SMDP_KEM,r_resp) in
+    {55}out(LPA2EUICC, (tid_1,PK_EU_PROFILE_1,CT_RESP_1,resp_mac_1));
+    {56}in(LPA2EUICC, (tid_bpp: Tid_t,CT_PROFILE_1: bitstring,encrypted_prof: bitstring,profile_mac_in: bitstring));
+    {57}if (tid_bpp = tid_1) then
+    {58}let SS_PROFILE_1: KEMss_t = kem_dec(CT_PROFILE_1,SK_EU_PROFILE) in
+    {59}let k_profile_1: SymKey_t = kdf_profile(SS_PROFILE_1) in
+    {60}let expected_profile_mac: bitstring = mac(k_profile_1,msg_profile(tid_1,CT_PROFILE_1,encrypted_prof)) in
+    {61}if (profile_mac_in = expected_profile_mac) then
+    {62}let profile_1: Profile_t = sdec(encrypted_prof,k_profile_1) in
+    {63}new iccid_1: ICCID_t;
+    {39}let dev_1: Id_t = devMain in
+    {64}event EUICC_PROFILE_INSTALLED(dev_1,tid_1,profile_1,iccid_1);
+    {65}new r_install: KEMcoin_t;
+    {67}let SS_INSTALL_1: KEMss_t = kem_ss(PK_SMDP_KEM,r_install) in
+    {68}let k_install_1: SymKey_t = kdf_bind(SS_INSTALL_1,tid_1) in
+    {69}let install_mac_1: bitstring = mac(k_install_1,msg_install(tid_1,iccid_1)) in
+    {66}let CT_INSTALL_1: bitstring = kem_enc(PK_SMDP_KEM,r_install) in
+    {70}out(LPA2EUICC, (tid_1,iccid_1,CT_INSTALL_1,install_mac_1))
+) | (
+    {71}phase 1;
+    {72}out(c, SK_SMDP_KEM)
+)
+
+-- Query not attacker_p1(secret_profile[]) in process 1.
+Translating the process into Horn clauses...
+Completing...
+Starting query not attacker_p1(secret_profile[])
+RESULT not attacker_p1(secret_profile[]) is true.
+-- Query not attacker_p1(secret_profile[]) in process 1.
+Translating the process into Horn clauses...
+Completing...
+Starting query not attacker_p1(secret_profile[])
+RESULT not attacker_p1(secret_profile[]) is true.
+-- Query inj-event(EUICC_PROFILE_INSTALLED(dev_2,tid_2,profile_2,iccid_2)) ==> inj-event(SMDP_BOUND_PROFILE(dev_2,tid_2,profile_2)) in process 1.
+Translating the process into Horn clauses...
+Completing...
+Starting query inj-event(EUICC_PROFILE_INSTALLED(dev_2,tid_2,profile_2,iccid_2)) ==> inj-event(SMDP_BOUND_PROFILE(dev_2,tid_2,profile_2))
+RESULT inj-event(EUICC_PROFILE_INSTALLED(dev_2,tid_2,profile_2,iccid_2)) ==> inj-event(SMDP_BOUND_PROFILE(dev_2,tid_2,profile_2)) is true.
+-- Query inj-event(SMDP_INSTALL_CONFIRMED(dev_2,tid_2,iccid_2)) ==> inj-event(EUICC_PROFILE_INSTALLED(dev_2,tid_2,profile_2,iccid_2)) in process 1.
+Translating the process into Horn clauses...
+Completing...
+Starting query inj-event(SMDP_INSTALL_CONFIRMED(dev_2,tid_2,iccid_2)) ==> inj-event(EUICC_PROFILE_INSTALLED(dev_2,tid_2,profile_2,iccid_2))
+RESULT inj-event(SMDP_INSTALL_CONFIRMED(dev_2,tid_2,iccid_2)) ==> inj-event(EUICC_PROFILE_INSTALLED(dev_2,tid_2,profile_2,iccid_2)) is true.
+
+--------------------------------------------------------------
+Verification summary:
+
+Query not attacker_p1(secret_profile[]) is true.
+
+Query not attacker_p1(secret_profile[]) is true.
+
+Query inj-event(EUICC_PROFILE_INSTALLED(dev_2,tid_2,profile_2,iccid_2)) ==> inj-event(SMDP_BOUND_PROFILE(dev_2,tid_2,profile_2)) is true.
+
+Query inj-event(SMDP_INSTALL_CONFIRMED(dev_2,tid_2,iccid_2)) ==> inj-event(EUICC_PROFILE_INSTALLED(dev_2,tid_2,profile_2,iccid_2)) is true.
+
+--------------------------------------------------------------

@@ -1,0 +1,251 @@
+(* =============================================================================
+   SGP.22 RSP Protocol - PHASE A ONLY: Mutual Authentication
+   
+   Phase A: Mutual Authentication (signature-based)
+   Extracted from full model
+   ============================================================================= *)
+
+(* ===== CHANNELS ===== *)
+free c         : channel.           (* Public channel: certs, meta *)
+free LPA2EUICC : channel [private]. (* Local LPA ↔ eUICC interface *)
+free LPA2SMDP  : channel [private]. (* HTTPS/TLS-abstracted channel *)
+
+
+(* ===== DATA TYPES ===== *)
+type Id_t.          (* Entity identifier *)
+type Tid_t.         (* TransactionID *)
+type Nonce_t.       (* Challenges *)
+type K_t.           (* Long-term signing keys *)
+type Sig_t.         (* Digital signatures *)
+type Cert_t.        (* Certificates *)
+type Tag_t.         (* Roles / message tags *)
+
+
+(* ===== CONSTANTS ===== *)
+(* Entity IDs *)
+const ID_SMDP   : Id_t.
+const ID_LPA    : Id_t.
+const ID_EUICC  : Id_t.
+
+(* Role tags *)
+const tag_ci    : Tag_t.
+const tag_dp    : Tag_t.
+const tag_eu    : Tag_t.
+
+(* Message tags *)
+const t_getChal : Tag_t.
+
+(* Root CI secret key *)
+const SK_CI     : K_t [private].
+const SK_DPauth : K_t [private].
+
+
+(* ===== CRYPTO PRIMITIVES ===== *)
+
+(* --- Long-term Signatures --- *)
+fun pk(K_t) : K_t.
+
+fun signcert(Id_t, K_t, Tag_t, K_t) : Cert_t.
+reduc forall id:Id_t, Pk:K_t, role:Tag_t, Sk:K_t;
+  checkcert(signcert(id, Pk, role, Sk), pk(Sk)) = (id, Pk, role).
+
+letfun certificate(id:Id_t, Pk:K_t, role:Tag_t) =
+  signcert(id, Pk, role, SK_CI).
+
+fun sign(bitstring, K_t) : Sig_t.
+reduc forall m:bitstring, Sk:K_t;
+  checksign(sign(m, Sk), pk(Sk)) = m.
+
+(* --- Message Constructors --- *)
+fun mk_serverSigned1(Tid_t, Nonce_t, Nonce_t, Id_t) : bitstring [data].
+fun mk_clientSigned1(Tid_t, Nonce_t) : bitstring [data].
+
+
+(* ===== EVENTS ===== *)
+
+(* --- Phase A: Mutual Authentication --- *)
+event SMDP_AUTH_BEGIN(Id_t, Tid_t).
+event EUICC_AUTH_OK(Id_t, Tid_t).
+event SMDP_AUTH_OK(Id_t, Tid_t).
+
+
+(* ===== QUERIES ===== *)
+
+(* --- CRITICAL PROPERTIES --- *)
+
+(* #9: Mutual Authentication - eUICC authenticates SM-DP+ *)
+query dev:Id_t, tid:Tid_t;
+  inj-event(EUICC_AUTH_OK(dev, tid)) ==> inj-event(SMDP_AUTH_BEGIN(dev, tid)).
+
+(* #9: Mutual Authentication - SM-DP+ authenticates eUICC *)
+query dev:Id_t, tid:Tid_t;
+  inj-event(SMDP_AUTH_OK(dev, tid)) ==> inj-event(EUICC_AUTH_OK(dev, tid)).
+
+
+(* =============================================================================
+   eUICC Process - Phase A Only
+   ============================================================================= *)
+
+let EUICC(PK_CI:K_t, dev:Id_t) =
+  (* === Setup: Long-term keypair === *)
+  new SK_EUICC:K_t;
+  let PK_EUICC   = pk(SK_EUICC) in
+  let Cert_EUICC = certificate(ID_EUICC, PK_EUICC, tag_eu) in
+  out(c, Cert_EUICC);
+
+  (
+    (* ===================== PHASE A: Mutual Authentication ===================== *)
+    
+    (* (2) GetEUICCChallenge from LPA *)
+    in(LPA2EUICC, (=t_getChal, =ID_LPA, dev_in:Id_t));
+    if dev_in = dev then
+
+    (* (3) Generate fresh challenge *)
+    new eChal:Nonce_t;
+    out(LPA2EUICC, (dev, eChal));
+
+    (* (7) AuthenticateServer from LPA *)
+    in(LPA2EUICC,
+       (dev_srv      : Id_t,
+        serverSigned : bitstring,
+        serverSig    : Sig_t,
+        Cert_DPauth  : Cert_t));
+    if dev_srv = dev then
+
+    (* (8a-c) Verify SM-DP+ certificate *)
+    let (id_dp:Id_t, PK_DPauth:K_t, role_dp:Tag_t) = checkcert(Cert_DPauth, PK_CI) in
+
+    (* (8c) Verify serverSignature1 *)
+    let decoded_srv:bitstring = checksign(serverSig, PK_DPauth) in
+    let mk_serverSigned1(tidU:Tid_t, eChalU:Nonce_t, sChalU:Nonce_t, smdpAddr:Id_t) = decoded_srv in
+
+    (* (8d) Check challenge matches *)
+    if eChalU = eChal then
+    if smdpAddr = ID_SMDP then
+
+    (* (8e) eUICC authenticates SM-DP+ *)
+    event EUICC_AUTH_OK(dev, tidU);
+
+    (* (9) Create eUICCSignature1 *)
+    let clientSigned = mk_clientSigned1(tidU, sChalU) in
+    let clientSig    = sign(clientSigned, SK_EUICC) in
+    out(LPA2EUICC, (dev, clientSigned, clientSig, Cert_EUICC))
+  ).
+
+
+
+(* =============================================================================
+   SM-DP+ Process - Phase A Only
+   ============================================================================= *)
+
+let SMDP(PK_CI:K_t, dev:Id_t) =
+  (* === Setup: Long-term keypair === *)
+  let PK_DPauth   = pk(SK_DPauth) in
+  let Cert_DPauth = certificate(ID_SMDP, PK_DPauth, tag_dp) in
+  out(c, Cert_DPauth);
+
+  (
+    (* ===================== PHASE A: Mutual Authentication ===================== *)
+    
+    (* (5) InitiateAuthentication from LPA *)
+    in(LPA2SMDP, (devS:Id_t, eChalS:Nonce_t));
+    if devS = dev then
+
+    (* (5a) Generate TransactionID *)
+    new tid : Tid_t;
+    (* (5b) Generate serverChallenge *)
+    new sChal : Nonce_t;
+
+    event SMDP_AUTH_BEGIN(devS, tid);
+
+    (* (5c) Create serverSignature1 *)
+    let serverSigned = mk_serverSigned1(tid, eChalS, sChal, ID_SMDP) in
+    let serverSig    = sign(serverSigned, SK_DPauth) in
+
+    (* (6) InitiateAuthentication response to LPA *)
+    out(LPA2SMDP, (devS, serverSigned, serverSig, Cert_DPauth));
+
+    (* (10) AuthenticateClient from LPA *)
+    in(LPA2SMDP,
+       (devS2        : Id_t,
+        clientSigned : bitstring,
+        clientSig    : Sig_t,
+        Cert_EUICC   : Cert_t));
+    if devS2 = dev then
+
+    (* (11a) Verify eUICC certificate *)
+    let (id_eu:Id_t, PK_EUICC:K_t, role_eu:Tag_t) = checkcert(Cert_EUICC, PK_CI) in
+
+    (* (11b,c) Verify eUICCSignature1 *)
+    let decoded_cli:bitstring = checksign(clientSig, PK_EUICC) in
+    let mk_clientSigned1(tid2:Tid_t, sChal2:Nonce_t) = decoded_cli in
+
+    (* (11d) Check session binding *)
+    if tid2   = tid then
+    if sChal2 = sChal then
+
+    event SMDP_AUTH_OK(dev, tid)
+  ).
+
+
+
+(* =============================================================================
+   LPA Process - Honest Relay (Phase A Only)
+   ============================================================================= *)
+
+let LPA(PK_CI:K_t, dev:Id_t) =
+  (
+    (* ===================== PHASE A: Mutual Authentication ===================== *)
+    
+    (* (1) Request eUICC challenge *)
+    out(LPA2EUICC, (t_getChal, ID_LPA, dev));
+
+    (* (4) Receive challenge from eUICC *)
+    in(LPA2EUICC, (dev_ch:Id_t, eChal:Nonce_t));
+    if dev_ch = dev then
+
+    (* (5) Forward to SM-DP+ *)
+    out(LPA2SMDP, (dev, eChal));
+
+    (* (6) Receive server response *)
+    in(LPA2SMDP,
+       (dev2         : Id_t,
+        serverSigned : bitstring,
+        serverSig    : Sig_t,
+        Cert_DPauth  : Cert_t));
+    if dev2 = dev then
+
+    (* (7) Forward to eUICC *)
+    out(LPA2EUICC, (dev, serverSigned, serverSig, Cert_DPauth));
+
+    (* (9) Receive client response from eUICC *)
+    in(LPA2EUICC,
+       (dev3         : Id_t,
+        clientSigned : bitstring,
+        clientSig    : Sig_t,
+        Cert_EUICC   : Cert_t));
+    if dev3 = dev then
+
+    (* (10) Forward to SM-DP+ *)
+    out(LPA2SMDP, (dev, clientSigned, clientSig, Cert_EUICC))
+  ).
+
+
+
+(* =============================================================================
+   MAIN PROCESS
+   ============================================================================= *)
+
+process
+  (* CI public key distribution *)
+  let PK_CI = pk(SK_CI) in
+  out(c, PK_CI);
+
+  (* Device setup *)
+  new devMain : Id_t;
+
+  (* Run protocol instances *)
+  ( !SMDP(PK_CI, devMain)
+  | !LPA(PK_CI, devMain)
+  | !EUICC(PK_CI, devMain)
+  )

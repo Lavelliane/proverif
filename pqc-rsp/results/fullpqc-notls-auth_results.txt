@@ -1,0 +1,191 @@
+Process 0 (that is, the initial process):
+{1}let PK_ROOT: PQSigPK_t = pq_sig_pk(SK_ROOT_CA) in
+{2}out(c, PK_ROOT);
+{3}new devMain: Id_t;
+(
+    {4}!
+    {5}let dev: Id_t = devMain in
+    {6}let PK_SMDP_KEM: KEMpk_t = kem_pk(SK_SMDP_KEM) in
+    {7}let cert_tbs_dp: bitstring = (ID_SMDP,PK_SMDP_KEM,tag_dp) in
+    {8}let sig_dp: PQSig_t = pq_sign(cert_tbs_dp,SK_ROOT_CA) in
+    {9}out(c, (ID_SMDP,PK_SMDP_KEM,tag_dp,sig_dp));
+    {10}in(ES9, (devS: Id_t,eChalS: Nonce_t,PK_EUICC_EPH: KEMpk_t,PK_EUICC_KEM: KEMpk_t,sig_eu: PQSig_t));
+    {11}if (devS = dev) then
+    {12}let cert_tbs_eu: bitstring = (ID_EUICC,PK_EUICC_KEM,tag_eu) in
+    {13}if (pq_verify(sig_eu,cert_tbs_eu,PK_ROOT) = true) then
+    {14}new tid: Tid_t;
+    {15}new serverNonce: Nonce_t;
+    {16}event SMDP_BEGIN(devS,tid);
+    {17}new r_eph: KEMcoin_t;
+    {18}let CT_EPH: bitstring = kem_enc(PK_EUICC_EPH,r_eph) in
+    {19}let SS_EPH: KEMss_t = kem_ss(PK_EUICC_EPH,r_eph) in
+    {20}new r_client: KEMcoin_t;
+    {21}let CT_CLIENT: bitstring = kem_enc(PK_EUICC_KEM,r_client) in
+    {22}let SS_CLIENT: KEMss_t = kem_ss(PK_EUICC_KEM,r_client) in
+    {23}out(ES9, (tid,serverNonce,CT_EPH,CT_CLIENT,PK_SMDP_KEM,sig_dp));
+    {24}in(ES9, (tid2: Tid_t,CT_SERVER: bitstring,Finished_EU_in: bitstring));
+    {25}if (tid2 = tid) then
+    {26}let SS_SERVER: KEMss_t = kem_dec(CT_SERVER,SK_SMDP_KEM) in
+    {27}let transcript: bitstring = (eChalS,serverNonce,tid,CT_EPH,CT_CLIENT,CT_SERVER,PK_EUICC_KEM,PK_SMDP_KEM) in
+    {28}let session_key: SessionKey_t = kdf_session(SS_EPH,SS_SERVER,SS_CLIENT,transcript) in
+    {29}let expected_finished_eu: bitstring = session_mac(session_key,transcript) in
+    {30}if (Finished_EU_in = expected_finished_eu) then
+    {31}event SMDP_VERIFIED_FINISHED(dev,tid,transcript);
+    {32}event SMDP_KEY(devS,tid,session_key);
+    {33}let Finished_DP: bitstring = session_mac(session_key,(transcript,Finished_EU_in)) in
+    {34}event SMDP_SENT_FINISHED(dev,tid,transcript);
+    {35}out(ES9, (tid,Finished_DP));
+    {36}event SMDP_AUTH_OK(dev,tid)
+) | (
+    {37}!
+    {38}let dev_1: Id_t = devMain in
+    {39}new SK_EUICC_KEM: KEMsk_t;
+    {40}let PK_EUICC_KEM_1: KEMpk_t = kem_pk(SK_EUICC_KEM) in
+    {41}let cert_tbs_eu_1: bitstring = (ID_EUICC,PK_EUICC_KEM_1,tag_eu) in
+    {42}let sig_eu_1: PQSig_t = pq_sign(cert_tbs_eu_1,SK_ROOT_CA) in
+    {43}out(c, (ID_EUICC,PK_EUICC_KEM_1,tag_eu,sig_eu_1));
+    {44}new SK_EUICC_EPH: KEMsk_t;
+    {45}let PK_EUICC_EPH_1: KEMpk_t = kem_pk(SK_EUICC_EPH) in
+    {46}new eChal: Nonce_t;
+    {47}out(ES9, (dev_1,eChal,PK_EUICC_EPH_1,PK_EUICC_KEM_1,sig_eu_1));
+    {48}in(LPA2EUICC, (tid_1: Tid_t,serverNonce_1: Nonce_t,CT_EPH_1: bitstring,CT_CLIENT_1: bitstring,PK_SMDP_KEM_1: KEMpk_t,sig_dp_1: PQSig_t));
+    {49}let cert_tbs_dp_1: bitstring = (ID_SMDP,PK_SMDP_KEM_1,tag_dp) in
+    {50}if (pq_verify(sig_dp_1,cert_tbs_dp_1,PK_ROOT) = true) then
+    {51}let SS_EPH_1: KEMss_t = kem_dec(CT_EPH_1,SK_EUICC_EPH) in
+    {52}let SS_CLIENT_1: KEMss_t = kem_dec(CT_CLIENT_1,SK_EUICC_KEM) in
+    {53}new r_server: KEMcoin_t;
+    {54}let CT_SERVER_1: bitstring = kem_enc(PK_SMDP_KEM_1,r_server) in
+    {55}let SS_SERVER_1: KEMss_t = kem_ss(PK_SMDP_KEM_1,r_server) in
+    {56}let transcript_1: bitstring = (eChal,serverNonce_1,tid_1,CT_EPH_1,CT_CLIENT_1,CT_SERVER_1,PK_EUICC_KEM_1,PK_SMDP_KEM_1) in
+    {57}let session_key_1: SessionKey_t = kdf_session(SS_EPH_1,SS_SERVER_1,SS_CLIENT_1,transcript_1) in
+    {58}let Finished_EU: bitstring = session_mac(session_key_1,transcript_1) in
+    {59}event EUICC_SENT_FINISHED(dev_1,tid_1,transcript_1);
+    {60}event EUICC_KEY(dev_1,tid_1,session_key_1);
+    {61}out(LPA2EUICC, (tid_1,CT_SERVER_1,Finished_EU));
+    {62}in(LPA2EUICC, (tid2_1: Tid_t,Finished_DP_in: bitstring));
+    {63}if (tid2_1 = tid_1) then
+    {64}let expected_finished_dp: bitstring = session_mac(session_key_1,(transcript_1,Finished_EU)) in
+    {65}if (Finished_DP_in = expected_finished_dp) then
+    {66}event EUICC_VERIFIED_FINISHED(dev_1,tid_1,transcript_1);
+    {67}event EUICC_AUTH_OK(dev_1,tid_1)
+)
+
+--  Process 1 (that is, process 0, with let moved downwards):
+{1}let PK_ROOT: PQSigPK_t = pq_sig_pk(SK_ROOT_CA) in
+{2}out(c, PK_ROOT);
+{3}new devMain: Id_t;
+(
+    {4}!
+    {6}let PK_SMDP_KEM: KEMpk_t = kem_pk(SK_SMDP_KEM) in
+    {7}let cert_tbs_dp: bitstring = (ID_SMDP,PK_SMDP_KEM,tag_dp) in
+    {8}let sig_dp: PQSig_t = pq_sign(cert_tbs_dp,SK_ROOT_CA) in
+    {9}out(c, (ID_SMDP,PK_SMDP_KEM,tag_dp,sig_dp));
+    {10}in(ES9, (devS: Id_t,eChalS: Nonce_t,PK_EUICC_EPH: KEMpk_t,PK_EUICC_KEM: KEMpk_t,sig_eu: PQSig_t));
+    {5}let dev: Id_t = devMain in
+    {11}if (devS = dev) then
+    {12}let cert_tbs_eu: bitstring = (ID_EUICC,PK_EUICC_KEM,tag_eu) in
+    {13}if (pq_verify(sig_eu,cert_tbs_eu,PK_ROOT) = true) then
+    {14}new tid: Tid_t;
+    {15}new serverNonce: Nonce_t;
+    {16}event SMDP_BEGIN(devS,tid);
+    {17}new r_eph: KEMcoin_t;
+    {20}new r_client: KEMcoin_t;
+    {21}let CT_CLIENT: bitstring = kem_enc(PK_EUICC_KEM,r_client) in
+    {18}let CT_EPH: bitstring = kem_enc(PK_EUICC_EPH,r_eph) in
+    {23}out(ES9, (tid,serverNonce,CT_EPH,CT_CLIENT,PK_SMDP_KEM,sig_dp));
+    {24}in(ES9, (tid2: Tid_t,CT_SERVER: bitstring,Finished_EU_in: bitstring));
+    {25}if (tid2 = tid) then
+    {26}let SS_SERVER: KEMss_t = kem_dec(CT_SERVER,SK_SMDP_KEM) in
+    {27}let transcript: bitstring = (eChalS,serverNonce,tid,CT_EPH,CT_CLIENT,CT_SERVER,PK_EUICC_KEM,PK_SMDP_KEM) in
+    {22}let SS_CLIENT: KEMss_t = kem_ss(PK_EUICC_KEM,r_client) in
+    {19}let SS_EPH: KEMss_t = kem_ss(PK_EUICC_EPH,r_eph) in
+    {28}let session_key: SessionKey_t = kdf_session(SS_EPH,SS_SERVER,SS_CLIENT,transcript) in
+    {29}let expected_finished_eu: bitstring = session_mac(session_key,transcript) in
+    {30}if (Finished_EU_in = expected_finished_eu) then
+    {31}event SMDP_VERIFIED_FINISHED(dev,tid,transcript);
+    {32}event SMDP_KEY(devS,tid,session_key);
+    {34}event SMDP_SENT_FINISHED(dev,tid,transcript);
+    {33}let Finished_DP: bitstring = session_mac(session_key,(transcript,Finished_EU_in)) in
+    {35}out(ES9, (tid,Finished_DP));
+    {36}event SMDP_AUTH_OK(dev,tid)
+) | (
+    {37}!
+    {39}new SK_EUICC_KEM: KEMsk_t;
+    {40}let PK_EUICC_KEM_1: KEMpk_t = kem_pk(SK_EUICC_KEM) in
+    {41}let cert_tbs_eu_1: bitstring = (ID_EUICC,PK_EUICC_KEM_1,tag_eu) in
+    {42}let sig_eu_1: PQSig_t = pq_sign(cert_tbs_eu_1,SK_ROOT_CA) in
+    {43}out(c, (ID_EUICC,PK_EUICC_KEM_1,tag_eu,sig_eu_1));
+    {44}new SK_EUICC_EPH: KEMsk_t;
+    {46}new eChal: Nonce_t;
+    {45}let PK_EUICC_EPH_1: KEMpk_t = kem_pk(SK_EUICC_EPH) in
+    {38}let dev_1: Id_t = devMain in
+    {47}out(ES9, (dev_1,eChal,PK_EUICC_EPH_1,PK_EUICC_KEM_1,sig_eu_1));
+    {48}in(LPA2EUICC, (tid_1: Tid_t,serverNonce_1: Nonce_t,CT_EPH_1: bitstring,CT_CLIENT_1: bitstring,PK_SMDP_KEM_1: KEMpk_t,sig_dp_1: PQSig_t));
+    {49}let cert_tbs_dp_1: bitstring = (ID_SMDP,PK_SMDP_KEM_1,tag_dp) in
+    {50}if (pq_verify(sig_dp_1,cert_tbs_dp_1,PK_ROOT) = true) then
+    {51}let SS_EPH_1: KEMss_t = kem_dec(CT_EPH_1,SK_EUICC_EPH) in
+    {52}let SS_CLIENT_1: KEMss_t = kem_dec(CT_CLIENT_1,SK_EUICC_KEM) in
+    {53}new r_server: KEMcoin_t;
+    {54}let CT_SERVER_1: bitstring = kem_enc(PK_SMDP_KEM_1,r_server) in
+    {56}let transcript_1: bitstring = (eChal,serverNonce_1,tid_1,CT_EPH_1,CT_CLIENT_1,CT_SERVER_1,PK_EUICC_KEM_1,PK_SMDP_KEM_1) in
+    {59}event EUICC_SENT_FINISHED(dev_1,tid_1,transcript_1);
+    {55}let SS_SERVER_1: KEMss_t = kem_ss(PK_SMDP_KEM_1,r_server) in
+    {57}let session_key_1: SessionKey_t = kdf_session(SS_EPH_1,SS_SERVER_1,SS_CLIENT_1,transcript_1) in
+    {60}event EUICC_KEY(dev_1,tid_1,session_key_1);
+    {58}let Finished_EU: bitstring = session_mac(session_key_1,transcript_1) in
+    {61}out(LPA2EUICC, (tid_1,CT_SERVER_1,Finished_EU));
+    {62}in(LPA2EUICC, (tid2_1: Tid_t,Finished_DP_in: bitstring));
+    {63}if (tid2_1 = tid_1) then
+    {64}let expected_finished_dp: bitstring = session_mac(session_key_1,(transcript_1,Finished_EU)) in
+    {65}if (Finished_DP_in = expected_finished_dp) then
+    {66}event EUICC_VERIFIED_FINISHED(dev_1,tid_1,transcript_1);
+    {67}event EUICC_AUTH_OK(dev_1,tid_1)
+)
+
+-- Query inj-event(EUICC_AUTH_OK(dev_2,tid_2)) ==> inj-event(SMDP_BEGIN(dev_2,tid_2)) in process 1.
+Translating the process into Horn clauses...
+Completing...
+Starting query inj-event(EUICC_AUTH_OK(dev_2,tid_2)) ==> inj-event(SMDP_BEGIN(dev_2,tid_2))
+RESULT inj-event(EUICC_AUTH_OK(dev_2,tid_2)) ==> inj-event(SMDP_BEGIN(dev_2,tid_2)) is true.
+-- Query inj-event(SMDP_AUTH_OK(dev_2,tid_2)) ==> inj-event(EUICC_SENT_FINISHED(dev_2,tid_2,transcript_2)) in process 1.
+Translating the process into Horn clauses...
+Completing...
+Starting query inj-event(SMDP_AUTH_OK(dev_2,tid_2)) ==> inj-event(EUICC_SENT_FINISHED(dev_2,tid_2,transcript_2))
+RESULT inj-event(SMDP_AUTH_OK(dev_2,tid_2)) ==> inj-event(EUICC_SENT_FINISHED(dev_2,tid_2,transcript_2)) is true.
+-- Query inj-event(SMDP_KEY(dev_2,tid_2,k)) ==> inj-event(EUICC_KEY(dev_2,tid_2,k)) in process 1.
+Translating the process into Horn clauses...
+Completing...
+Starting query inj-event(SMDP_KEY(dev_2,tid_2,k)) ==> inj-event(EUICC_KEY(dev_2,tid_2,k))
+RESULT inj-event(SMDP_KEY(dev_2,tid_2,k)) ==> inj-event(EUICC_KEY(dev_2,tid_2,k)) is true.
+-- Query not attacker(test_session_key[]) in process 1.
+Translating the process into Horn clauses...
+Completing...
+Starting query not attacker(test_session_key[])
+RESULT not attacker(test_session_key[]) is true.
+-- Query inj-event(SMDP_VERIFIED_FINISHED(dev_2,tid_2,transcript_2)) ==> inj-event(EUICC_SENT_FINISHED(dev_2,tid_2,transcript_2)) in process 1.
+Translating the process into Horn clauses...
+Completing...
+Starting query inj-event(SMDP_VERIFIED_FINISHED(dev_2,tid_2,transcript_2)) ==> inj-event(EUICC_SENT_FINISHED(dev_2,tid_2,transcript_2))
+RESULT inj-event(SMDP_VERIFIED_FINISHED(dev_2,tid_2,transcript_2)) ==> inj-event(EUICC_SENT_FINISHED(dev_2,tid_2,transcript_2)) is true.
+-- Query inj-event(EUICC_VERIFIED_FINISHED(dev_2,tid_2,transcript_2)) ==> inj-event(SMDP_SENT_FINISHED(dev_2,tid_2,transcript_2)) in process 1.
+Translating the process into Horn clauses...
+Completing...
+Starting query inj-event(EUICC_VERIFIED_FINISHED(dev_2,tid_2,transcript_2)) ==> inj-event(SMDP_SENT_FINISHED(dev_2,tid_2,transcript_2))
+RESULT inj-event(EUICC_VERIFIED_FINISHED(dev_2,tid_2,transcript_2)) ==> inj-event(SMDP_SENT_FINISHED(dev_2,tid_2,transcript_2)) is true.
+
+--------------------------------------------------------------
+Verification summary:
+
+Query inj-event(EUICC_AUTH_OK(dev_2,tid_2)) ==> inj-event(SMDP_BEGIN(dev_2,tid_2)) is true.
+
+Query inj-event(SMDP_AUTH_OK(dev_2,tid_2)) ==> inj-event(EUICC_SENT_FINISHED(dev_2,tid_2,transcript_2)) is true.
+
+Query inj-event(SMDP_KEY(dev_2,tid_2,k)) ==> inj-event(EUICC_KEY(dev_2,tid_2,k)) is true.
+
+Query not attacker(test_session_key[]) is true.
+
+Query inj-event(SMDP_VERIFIED_FINISHED(dev_2,tid_2,transcript_2)) ==> inj-event(EUICC_SENT_FINISHED(dev_2,tid_2,transcript_2)) is true.
+
+Query inj-event(EUICC_VERIFIED_FINISHED(dev_2,tid_2,transcript_2)) ==> inj-event(SMDP_SENT_FINISHED(dev_2,tid_2,transcript_2)) is true.
+
+--------------------------------------------------------------

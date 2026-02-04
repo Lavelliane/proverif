@@ -1,0 +1,489 @@
+Process 0 (that is, the initial process):
+{1}new devMain: Id_t;
+{2}new tidMain: Tid_t;
+{3}new SK_EUICC_KEM: KEMsk_t;
+{4}let PK_EUICC_KEM: KEMpk_t = kem_pk(SK_EUICC_KEM) in
+{5}let PK_SMDP_KEM: KEMpk_t = kem_pk(SK_SMDP_KEM) in
+(
+    {6}!
+    {7}let dev: Id_t = devMain in
+    {8}let tid: Tid_t = tidMain in
+    {9}let profile: Profile_t = secret_profile in
+    {10}let PK_SMDP_KEM_1: KEMpk_t = kem_pk(SK_SMDP_KEM) in
+    {11}let encaps_prepare: bitstring = kem_encaps(PK_EUICC_KEM) in
+    {12}let CT_PREPARE: KEMct_t = get_ct(encaps_prepare) in
+    {13}let SS_PREPARE: KEMss_t = get_ss(encaps_prepare) in
+    {14}let k_prepare: BindKey_t = kdf_bind(SS_PREPARE,tid) in
+    {15}let prepare_mac: MAC_t = auth_mac(mk_prepare_data(tid),k_prepare) in
+    {16}event SMDP_PREPARE_DOWNLOAD(dev,tid,CT_PREPARE);
+    {17}out(LPA2SMDP, (dev,tid,CT_PREPARE,prepare_mac));
+    {18}in(LPA2SMDP, (devS3: Id_t,tid3: Tid_t,PK_EU_PROFILE: KEMpk_t,CT_RESP: KEMct_t,resp_mac: MAC_t));
+    {19}if (devS3 = dev) then
+    {20}if (tid3 = tid) then
+    {21}let SS_RESP: KEMss_t = kem_decaps(CT_RESP,SK_SMDP_KEM) in
+    {22}let k_resp: BindKey_t = kdf_bind(SS_RESP,tid) in
+    {23}if (verify_auth_mac(resp_mac,mk_prepare_response(tid,PK_EU_PROFILE),k_resp) = true) then
+    {24}event SMDP_VERIFIED_PREPARE_RESPONSE(dev,tid,PK_EU_PROFILE);
+    {25}let encaps_profile: bitstring = kem_encaps(PK_EU_PROFILE) in
+    {26}let CT_PROFILE: KEMct_t = get_ct(encaps_profile) in
+    {27}let SS_PROFILE: KEMss_t = get_ss(encaps_profile) in
+    {28}let k_enc: SymKey_t = kdf_enc(SS_PROFILE) in
+    {29}let k_mac: SymKey_t = kdf_mac(SS_PROFILE) in
+    {30}event SMDP_KEM_COMPLETE(dev,tid,PK_EU_PROFILE,CT_PROFILE);
+    {31}let encrypted_profile: bitstring = senc(profile,k_enc) in
+    {32}let bpp_body: bitstring = mk_bpp_body(tid,PK_EU_PROFILE,CT_PROFILE,encrypted_profile) in
+    {33}let bpp_mac: MAC_t = profile_mac(bpp_body,k_mac) in
+    {34}let encaps_profile_auth: bitstring = kem_encaps(PK_EUICC_KEM) in
+    {35}let CT_PROFILE_AUTH: KEMct_t = get_ct(encaps_profile_auth) in
+    {36}let SS_PROFILE_AUTH: KEMss_t = get_ss(encaps_profile_auth) in
+    {37}let k_profile_auth: BindKey_t = kdf_bind(SS_PROFILE_AUTH,tid) in
+    {38}let profile_auth_mac: MAC_t = auth_mac(bpp_body,k_profile_auth) in
+    {39}event SMDP_BOUND_PROFILE(dev,tid,profile);
+    {40}out(LPA2SMDP, (dev,tid,bpp_body,bpp_mac,CT_PROFILE,CT_PROFILE_AUTH,profile_auth_mac));
+    {41}in(LPA2SMDP, (devS4: Id_t,tid4: Tid_t,iccid: ICCID_t,CT_INSTALL: KEMct_t,install_mac: MAC_t));
+    {42}if (devS4 = dev) then
+    {43}if (tid4 = tid) then
+    {44}let SS_INSTALL: KEMss_t = kem_decaps(CT_INSTALL,SK_SMDP_KEM) in
+    {45}let k_install: BindKey_t = kdf_bind_install(SS_INSTALL,tid,iccid) in
+    {46}if (verify_auth_mac(install_mac,mk_install_result(tid,iccid),k_install) = true) then
+    {47}event SMDP_INSTALL_CONFIRMED(dev,tid,iccid)
+) | (
+    {48}!
+    {49}let dev_1: Id_t = devMain in
+    {50}let tid_1: Tid_t = tidMain in
+    {51}in(LPA2SMDP, (dev5: Id_t,tid4_1: Tid_t,CT_PREPARE_1: KEMct_t,prepare_mac_1: MAC_t));
+    {52}if (dev5 = dev_1) then
+    {53}if (tid4_1 = tid_1) then
+    {54}out(LPA2EUICC, (t_prepDownload,dev_1,tid4_1,CT_PREPARE_1,prepare_mac_1));
+    {55}in(LPA2EUICC, (dev6: Id_t,tid5: Tid_t,PK_EU_PROFILE_1: KEMpk_t,CT_RESP_1: KEMct_t,resp_mac_1: MAC_t));
+    {56}if (dev6 = dev_1) then
+    {57}if (tid5 = tid_1) then
+    {58}out(LPA2SMDP, (dev_1,tid5,PK_EU_PROFILE_1,CT_RESP_1,resp_mac_1));
+    {59}in(LPA2SMDP, (dev7: Id_t,tid6: Tid_t,bpp_body_1: bitstring,bpp_mac_1: MAC_t,CT_PROFILE_1: KEMct_t,CT_PROFILE_AUTH_1: KEMct_t,profile_auth_mac_1: MAC_t));
+    {60}if (dev7 = dev_1) then
+    {61}if (tid6 = tid_1) then
+    {62}out(LPA2EUICC, (t_loadBPP,dev_1,tid6,bpp_body_1,bpp_mac_1,CT_PROFILE_1,CT_PROFILE_AUTH_1,profile_auth_mac_1));
+    {63}in(LPA2EUICC, (dev8: Id_t,tid7: Tid_t,iccid_1: ICCID_t,CT_INSTALL_1: KEMct_t,install_mac_1: MAC_t));
+    {64}if (dev8 = dev_1) then
+    {65}if (tid7 = tid_1) then
+    {66}out(LPA2SMDP, (dev_1,tid7,iccid_1,CT_INSTALL_1,install_mac_1))
+) | (
+    {67}!
+    {68}let dev_2: Id_t = devMain in
+    {69}let tid_2: Tid_t = tidMain in
+    {70}let SK_EUICC_KEM_1: KEMsk_t = SK_EUICC_KEM in
+    {71}in(LPA2EUICC, (=t_prepDownload,dev_pd: Id_t,tid_pd: Tid_t,CT_PREPARE_2: KEMct_t,prepare_mac_2: MAC_t));
+    {72}if (dev_pd = dev_2) then
+    {73}if (tid_pd = tid_2) then
+    {74}let SS_PREPARE_1: KEMss_t = kem_decaps(CT_PREPARE_2,SK_EUICC_KEM_1) in
+    {75}let k_prepare_1: BindKey_t = kdf_bind(SS_PREPARE_1,tid_2) in
+    {76}if (verify_auth_mac(prepare_mac_2,mk_prepare_data(tid_2),k_prepare_1) = true) then
+    {77}event EUICC_VERIFIED_PREPARE(dev_2,tid_2);
+    {78}new SK_EU_PROFILE: KEMsk_t;
+    {79}let PK_EU_PROFILE_2: KEMpk_t = kem_pk(SK_EU_PROFILE) in
+    {80}let encaps_resp: bitstring = kem_encaps(PK_SMDP_KEM) in
+    {81}let CT_RESP_2: KEMct_t = get_ct(encaps_resp) in
+    {82}let SS_RESP_1: KEMss_t = get_ss(encaps_resp) in
+    {83}let k_resp_1: BindKey_t = kdf_bind(SS_RESP_1,tid_2) in
+    {84}let resp_mac_2: MAC_t = auth_mac(mk_prepare_response(tid_2,PK_EU_PROFILE_2),k_resp_1) in
+    {85}event EUICC_PREPARE_DOWNLOAD_OK(dev_2,tid_2,PK_EU_PROFILE_2,CT_RESP_2);
+    {86}out(LPA2EUICC, (dev_2,tid_2,PK_EU_PROFILE_2,CT_RESP_2,resp_mac_2));
+    {87}in(LPA2EUICC, (=t_loadBPP,dev_bpp: Id_t,tid_bpp: Tid_t,bpp_body_2: bitstring,bpp_mac_2: MAC_t,CT_PROFILE_2: KEMct_t,CT_PROFILE_AUTH_2: KEMct_t,profile_auth_mac_2: MAC_t));
+    {88}if (dev_bpp = dev_2) then
+    {89}if (tid_bpp = tid_2) then
+    {90}let SS_PROFILE_AUTH_1: KEMss_t = kem_decaps(CT_PROFILE_AUTH_2,SK_EUICC_KEM_1) in
+    {91}let k_profile_auth_1: BindKey_t = kdf_bind(SS_PROFILE_AUTH_1,tid_2) in
+    {92}let mk_bpp_body(=tid_2,=PK_EU_PROFILE_2,=CT_PROFILE_2,encrypted_profile_1: bitstring) = bpp_body_2 in
+    {93}if (verify_auth_mac(profile_auth_mac_2,bpp_body_2,k_profile_auth_1) = true) then
+    {94}let SS_PROFILE_1: KEMss_t = kem_decaps(CT_PROFILE_2,SK_EU_PROFILE) in
+    {95}let k_enc_1: SymKey_t = kdf_enc(SS_PROFILE_1) in
+    {96}let k_mac_1: SymKey_t = kdf_mac(SS_PROFILE_1) in
+    {97}event EUICC_KEM_COMPLETE(dev_2,tid_2,PK_EU_PROFILE_2,CT_PROFILE_2);
+    {98}if (verify_profile_mac(bpp_mac_2,bpp_body_2,k_mac_1) = true) then
+    {99}let profile_1: Profile_t = sdec(encrypted_profile_1,k_enc_1) in
+    {100}new iccid_2: ICCID_t;
+    {101}event EUICC_PROFILE_INSTALLED(dev_2,tid_2,profile_1,iccid_2);
+    {102}let encaps_install: bitstring = kem_encaps(PK_SMDP_KEM) in
+    {103}let CT_INSTALL_2: KEMct_t = get_ct(encaps_install) in
+    {104}let SS_INSTALL_1: KEMss_t = get_ss(encaps_install) in
+    {105}let k_install_1: BindKey_t = kdf_bind_install(SS_INSTALL_1,tid_2,iccid_2) in
+    {106}let install_mac_2: MAC_t = auth_mac(mk_install_result(tid_2,iccid_2),k_install_1) in
+    {107}out(LPA2EUICC, (dev_2,tid_2,iccid_2,CT_INSTALL_2,install_mac_2))
+) | (
+    {108}phase 1;
+    {109}out(c, SK_SMDP_KEM)
+)
+
+--  Process 1 (that is, process 0, with let moved downwards):
+{1}new devMain: Id_t;
+{2}new tidMain: Tid_t;
+{3}new SK_EUICC_KEM: KEMsk_t;
+(
+    {6}!
+    {4}let PK_EUICC_KEM: KEMpk_t = kem_pk(SK_EUICC_KEM) in
+    {11}let encaps_prepare: bitstring = kem_encaps(PK_EUICC_KEM) in
+    {12}let CT_PREPARE: KEMct_t = get_ct(encaps_prepare) in
+    {8}let tid: Tid_t = tidMain in
+    {7}let dev: Id_t = devMain in
+    {16}event SMDP_PREPARE_DOWNLOAD(dev,tid,CT_PREPARE);
+    {13}let SS_PREPARE: KEMss_t = get_ss(encaps_prepare) in
+    {14}let k_prepare: BindKey_t = kdf_bind(SS_PREPARE,tid) in
+    {15}let prepare_mac: MAC_t = auth_mac(mk_prepare_data(tid),k_prepare) in
+    {17}out(LPA2SMDP, (dev,tid,CT_PREPARE,prepare_mac));
+    {18}in(LPA2SMDP, (devS3: Id_t,tid3: Tid_t,PK_EU_PROFILE: KEMpk_t,CT_RESP: KEMct_t,resp_mac: MAC_t));
+    {19}if (devS3 = dev) then
+    {20}if (tid3 = tid) then
+    {21}let SS_RESP: KEMss_t = kem_decaps(CT_RESP,SK_SMDP_KEM) in
+    {22}let k_resp: BindKey_t = kdf_bind(SS_RESP,tid) in
+    {23}if (verify_auth_mac(resp_mac,mk_prepare_response(tid,PK_EU_PROFILE),k_resp) = true) then
+    {24}event SMDP_VERIFIED_PREPARE_RESPONSE(dev,tid,PK_EU_PROFILE);
+    {25}let encaps_profile: bitstring = kem_encaps(PK_EU_PROFILE) in
+    {26}let CT_PROFILE: KEMct_t = get_ct(encaps_profile) in
+    {30}event SMDP_KEM_COMPLETE(dev,tid,PK_EU_PROFILE,CT_PROFILE);
+    {9}let profile: Profile_t = secret_profile in
+    {39}event SMDP_BOUND_PROFILE(dev,tid,profile);
+    {34}let encaps_profile_auth: bitstring = kem_encaps(PK_EUICC_KEM) in
+    {36}let SS_PROFILE_AUTH: KEMss_t = get_ss(encaps_profile_auth) in
+    {37}let k_profile_auth: BindKey_t = kdf_bind(SS_PROFILE_AUTH,tid) in
+    {27}let SS_PROFILE: KEMss_t = get_ss(encaps_profile) in
+    {28}let k_enc: SymKey_t = kdf_enc(SS_PROFILE) in
+    {31}let encrypted_profile: bitstring = senc(profile,k_enc) in
+    {32}let bpp_body: bitstring = mk_bpp_body(tid,PK_EU_PROFILE,CT_PROFILE,encrypted_profile) in
+    {38}let profile_auth_mac: MAC_t = auth_mac(bpp_body,k_profile_auth) in
+    {35}let CT_PROFILE_AUTH: KEMct_t = get_ct(encaps_profile_auth) in
+    {29}let k_mac: SymKey_t = kdf_mac(SS_PROFILE) in
+    {33}let bpp_mac: MAC_t = profile_mac(bpp_body,k_mac) in
+    {40}out(LPA2SMDP, (dev,tid,bpp_body,bpp_mac,CT_PROFILE,CT_PROFILE_AUTH,profile_auth_mac));
+    {41}in(LPA2SMDP, (devS4: Id_t,tid4: Tid_t,iccid: ICCID_t,CT_INSTALL: KEMct_t,install_mac: MAC_t));
+    {42}if (devS4 = dev) then
+    {43}if (tid4 = tid) then
+    {44}let SS_INSTALL: KEMss_t = kem_decaps(CT_INSTALL,SK_SMDP_KEM) in
+    {45}let k_install: BindKey_t = kdf_bind_install(SS_INSTALL,tid,iccid) in
+    {46}if (verify_auth_mac(install_mac,mk_install_result(tid,iccid),k_install) = true) then
+    {47}event SMDP_INSTALL_CONFIRMED(dev,tid,iccid)
+) | (
+    {48}!
+    {51}in(LPA2SMDP, (dev5: Id_t,tid4_1: Tid_t,CT_PREPARE_1: KEMct_t,prepare_mac_1: MAC_t));
+    {49}let dev_1: Id_t = devMain in
+    {52}if (dev5 = dev_1) then
+    {50}let tid_1: Tid_t = tidMain in
+    {53}if (tid4_1 = tid_1) then
+    {54}out(LPA2EUICC, (t_prepDownload,dev_1,tid4_1,CT_PREPARE_1,prepare_mac_1));
+    {55}in(LPA2EUICC, (dev6: Id_t,tid5: Tid_t,PK_EU_PROFILE_1: KEMpk_t,CT_RESP_1: KEMct_t,resp_mac_1: MAC_t));
+    {56}if (dev6 = dev_1) then
+    {57}if (tid5 = tid_1) then
+    {58}out(LPA2SMDP, (dev_1,tid5,PK_EU_PROFILE_1,CT_RESP_1,resp_mac_1));
+    {59}in(LPA2SMDP, (dev7: Id_t,tid6: Tid_t,bpp_body_1: bitstring,bpp_mac_1: MAC_t,CT_PROFILE_1: KEMct_t,CT_PROFILE_AUTH_1: KEMct_t,profile_auth_mac_1: MAC_t));
+    {60}if (dev7 = dev_1) then
+    {61}if (tid6 = tid_1) then
+    {62}out(LPA2EUICC, (t_loadBPP,dev_1,tid6,bpp_body_1,bpp_mac_1,CT_PROFILE_1,CT_PROFILE_AUTH_1,profile_auth_mac_1));
+    {63}in(LPA2EUICC, (dev8: Id_t,tid7: Tid_t,iccid_1: ICCID_t,CT_INSTALL_1: KEMct_t,install_mac_1: MAC_t));
+    {64}if (dev8 = dev_1) then
+    {65}if (tid7 = tid_1) then
+    {66}out(LPA2SMDP, (dev_1,tid7,iccid_1,CT_INSTALL_1,install_mac_1))
+) | (
+    {67}!
+    {71}in(LPA2EUICC, (=t_prepDownload,dev_pd: Id_t,tid_pd: Tid_t,CT_PREPARE_2: KEMct_t,prepare_mac_2: MAC_t));
+    {68}let dev_2: Id_t = devMain in
+    {72}if (dev_pd = dev_2) then
+    {69}let tid_2: Tid_t = tidMain in
+    {73}if (tid_pd = tid_2) then
+    {70}let SK_EUICC_KEM_1: KEMsk_t = SK_EUICC_KEM in
+    {74}let SS_PREPARE_1: KEMss_t = kem_decaps(CT_PREPARE_2,SK_EUICC_KEM_1) in
+    {75}let k_prepare_1: BindKey_t = kdf_bind(SS_PREPARE_1,tid_2) in
+    {76}if (verify_auth_mac(prepare_mac_2,mk_prepare_data(tid_2),k_prepare_1) = true) then
+    {77}event EUICC_VERIFIED_PREPARE(dev_2,tid_2);
+    {78}new SK_EU_PROFILE: KEMsk_t;
+    {5}let PK_SMDP_KEM: KEMpk_t = kem_pk(SK_SMDP_KEM) in
+    {80}let encaps_resp: bitstring = kem_encaps(PK_SMDP_KEM) in
+    {81}let CT_RESP_2: KEMct_t = get_ct(encaps_resp) in
+    {79}let PK_EU_PROFILE_2: KEMpk_t = kem_pk(SK_EU_PROFILE) in
+    {85}event EUICC_PREPARE_DOWNLOAD_OK(dev_2,tid_2,PK_EU_PROFILE_2,CT_RESP_2);
+    {82}let SS_RESP_1: KEMss_t = get_ss(encaps_resp) in
+    {83}let k_resp_1: BindKey_t = kdf_bind(SS_RESP_1,tid_2) in
+    {84}let resp_mac_2: MAC_t = auth_mac(mk_prepare_response(tid_2,PK_EU_PROFILE_2),k_resp_1) in
+    {86}out(LPA2EUICC, (dev_2,tid_2,PK_EU_PROFILE_2,CT_RESP_2,resp_mac_2));
+    {87}in(LPA2EUICC, (=t_loadBPP,dev_bpp: Id_t,tid_bpp: Tid_t,bpp_body_2: bitstring,bpp_mac_2: MAC_t,CT_PROFILE_2: KEMct_t,CT_PROFILE_AUTH_2: KEMct_t,profile_auth_mac_2: MAC_t));
+    {88}if (dev_bpp = dev_2) then
+    {89}if (tid_bpp = tid_2) then
+    {90}let SS_PROFILE_AUTH_1: KEMss_t = kem_decaps(CT_PROFILE_AUTH_2,SK_EUICC_KEM_1) in
+    {92}let mk_bpp_body(=tid_2,=PK_EU_PROFILE_2,=CT_PROFILE_2,encrypted_profile_1: bitstring) = bpp_body_2 in
+    {91}let k_profile_auth_1: BindKey_t = kdf_bind(SS_PROFILE_AUTH_1,tid_2) in
+    {93}if (verify_auth_mac(profile_auth_mac_2,bpp_body_2,k_profile_auth_1) = true) then
+    {94}let SS_PROFILE_1: KEMss_t = kem_decaps(CT_PROFILE_2,SK_EU_PROFILE) in
+    {97}event EUICC_KEM_COMPLETE(dev_2,tid_2,PK_EU_PROFILE_2,CT_PROFILE_2);
+    {96}let k_mac_1: SymKey_t = kdf_mac(SS_PROFILE_1) in
+    {98}if (verify_profile_mac(bpp_mac_2,bpp_body_2,k_mac_1) = true) then
+    {95}let k_enc_1: SymKey_t = kdf_enc(SS_PROFILE_1) in
+    {99}let profile_1: Profile_t = sdec(encrypted_profile_1,k_enc_1) in
+    {100}new iccid_2: ICCID_t;
+    {101}event EUICC_PROFILE_INSTALLED(dev_2,tid_2,profile_1,iccid_2);
+    {102}let encaps_install: bitstring = kem_encaps(PK_SMDP_KEM) in
+    {104}let SS_INSTALL_1: KEMss_t = get_ss(encaps_install) in
+    {105}let k_install_1: BindKey_t = kdf_bind_install(SS_INSTALL_1,tid_2,iccid_2) in
+    {106}let install_mac_2: MAC_t = auth_mac(mk_install_result(tid_2,iccid_2),k_install_1) in
+    {103}let CT_INSTALL_2: KEMct_t = get_ct(encaps_install) in
+    {107}out(LPA2EUICC, (dev_2,tid_2,iccid_2,CT_INSTALL_2,install_mac_2))
+) | (
+    {108}phase 1;
+    {109}out(c, SK_SMDP_KEM)
+)
+
+-- Query not attacker_p1(secret_profile[]) in process 1.
+Translating the process into Horn clauses...
+Completing...
+200 rules inserted. Base: 190 rules (72 with conclusion selected). Queue: 4 rules.
+Starting query not attacker_p1(secret_profile[])
+RESULT not attacker_p1(secret_profile[]) is true.
+-- Query not attacker_p1(secret_profile[]) in process 1.
+Translating the process into Horn clauses...
+Completing...
+200 rules inserted. Base: 190 rules (72 with conclusion selected). Queue: 4 rules.
+Starting query not attacker_p1(secret_profile[])
+RESULT not attacker_p1(secret_profile[]) is true.
+-- Query inj-event(EUICC_PROFILE_INSTALLED(dev_3,tid_3,profile_2,iccid_3)) ==> inj-event(SMDP_BOUND_PROFILE(dev_3,tid_3,profile_2)) in process 1.
+Translating the process into Horn clauses...
+Completing...
+200 rules inserted. Base: 191 rules (72 with conclusion selected). Queue: 8 rules.
+Starting query inj-event(EUICC_PROFILE_INSTALLED(dev_3,tid_3,profile_2,iccid_3)) ==> inj-event(SMDP_BOUND_PROFILE(dev_3,tid_3,profile_2))
+goal reachable: b-inj-event(SMDP_BOUND_PROFILE(devMain[],tidMain[],secret_profile[]),@occ39_1) -> inj-event(EUICC_PROFILE_INSTALLED(devMain[],tidMain[],secret_profile[],iccid_3),@occ101_1)
+The hypothesis occurs strictly before the conclusion.
+Abbreviations:
+SK_EU_PROFILE_1 = SK_EU_PROFILE[prepare_mac_2 = auth_mac(mk_prepare_data(tidMain[]),kdf_bind(get_ss(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tidMain[])),CT_PREPARE_2 = get_ct(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tid_pd = tidMain[],dev_pd = devMain[],!1 = @sid]
+iccid_3 = iccid_2[profile_auth_mac_2 = auth_mac(mk_bpp_body(tidMain[],kem_pk(SK_EU_PROFILE_1),get_ct(kem_encaps(kem_pk(SK_EU_PROFILE_1))),senc(secret_profile[],kdf_enc(get_ss(kem_encaps(kem_pk(SK_EU_PROFILE_1)))))),kdf_bind(get_ss(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tidMain[])),CT_PROFILE_AUTH_2 = get_ct(kem_encaps(kem_pk(SK_EUICC_KEM[]))),CT_PROFILE_2 = get_ct(kem_encaps(kem_pk(SK_EU_PROFILE_1))),bpp_mac_2 = profile_mac(mk_bpp_body(tidMain[],kem_pk(SK_EU_PROFILE_1),get_ct(kem_encaps(kem_pk(SK_EU_PROFILE_1))),senc(secret_profile[],kdf_enc(get_ss(kem_encaps(kem_pk(SK_EU_PROFILE_1)))))),kdf_mac(get_ss(kem_encaps(kem_pk(SK_EU_PROFILE_1))))),bpp_body_2 = mk_bpp_body(tidMain[],kem_pk(SK_EU_PROFILE_1),get_ct(kem_encaps(kem_pk(SK_EU_PROFILE_1))),senc(secret_profile[],kdf_enc(get_ss(kem_encaps(kem_pk(SK_EU_PROFILE_1)))))),tid_bpp = tidMain[],dev_bpp = devMain[],prepare_mac_2 = auth_mac(mk_prepare_data(tidMain[]),kdf_bind(get_ss(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tidMain[])),CT_PREPARE_2 = get_ct(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tid_pd = tidMain[],dev_pd = devMain[],!1 = @sid]
+@occ101_1 = @occ101[profile_auth_mac_2 = auth_mac(mk_bpp_body(tidMain[],kem_pk(SK_EU_PROFILE_1),get_ct(kem_encaps(kem_pk(SK_EU_PROFILE_1))),senc(secret_profile[],kdf_enc(get_ss(kem_encaps(kem_pk(SK_EU_PROFILE_1)))))),kdf_bind(get_ss(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tidMain[])),CT_PROFILE_AUTH_2 = get_ct(kem_encaps(kem_pk(SK_EUICC_KEM[]))),CT_PROFILE_2 = get_ct(kem_encaps(kem_pk(SK_EU_PROFILE_1))),bpp_mac_2 = profile_mac(mk_bpp_body(tidMain[],kem_pk(SK_EU_PROFILE_1),get_ct(kem_encaps(kem_pk(SK_EU_PROFILE_1))),senc(secret_profile[],kdf_enc(get_ss(kem_encaps(kem_pk(SK_EU_PROFILE_1)))))),kdf_mac(get_ss(kem_encaps(kem_pk(SK_EU_PROFILE_1))))),bpp_body_2 = mk_bpp_body(tidMain[],kem_pk(SK_EU_PROFILE_1),get_ct(kem_encaps(kem_pk(SK_EU_PROFILE_1))),senc(secret_profile[],kdf_enc(get_ss(kem_encaps(kem_pk(SK_EU_PROFILE_1)))))),tid_bpp = tidMain[],dev_bpp = devMain[],prepare_mac_2 = auth_mac(mk_prepare_data(tidMain[]),kdf_bind(get_ss(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tidMain[])),CT_PREPARE_2 = get_ct(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tid_pd = tidMain[],dev_pd = devMain[],!1 = @sid]
+@occ39_1 = @occ39[resp_mac = auth_mac(mk_prepare_response(tidMain[],kem_pk(SK_EU_PROFILE_1)),kdf_bind(get_ss(kem_encaps(kem_pk(SK_SMDP_KEM))),tidMain[])),CT_RESP = get_ct(kem_encaps(kem_pk(SK_SMDP_KEM))),PK_EU_PROFILE = kem_pk(SK_EU_PROFILE_1),tid3 = tidMain[],devS3 = devMain[],!1 = @sid_1]
+RESULT inj-event(EUICC_PROFILE_INSTALLED(dev_3,tid_3,profile_2,iccid_3)) ==> inj-event(SMDP_BOUND_PROFILE(dev_3,tid_3,profile_2)) is true.
+-- Query inj-event(SMDP_INSTALL_CONFIRMED(dev_3,tid_3,iccid_3)) ==> inj-event(EUICC_PROFILE_INSTALLED(dev_3,tid_3,profile_2,iccid_3)) in process 1.
+Translating the process into Horn clauses...
+Completing...
+200 rules inserted. Base: 188 rules (72 with conclusion selected). Queue: 11 rules.
+Starting query inj-event(SMDP_INSTALL_CONFIRMED(dev_3,tid_3,iccid_3)) ==> inj-event(EUICC_PROFILE_INSTALLED(dev_3,tid_3,profile_2,iccid_3))
+goal reachable: @sid ≠ @sid_1 && b-inj-event(EUICC_PROFILE_INSTALLED(devMain[],tidMain[],secret_profile[],iccid_3),@occ101_2) -> inj-event(SMDP_INSTALL_CONFIRMED(devMain[],tidMain[],iccid_3),@occ47_1) && inj-event(SMDP_INSTALL_CONFIRMED(devMain[],tidMain[],iccid_3),@occ47_2)
+Abbreviations:
+SK_EU_PROFILE_1 = SK_EU_PROFILE[prepare_mac_2 = auth_mac(mk_prepare_data(tidMain[]),kdf_bind(get_ss(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tidMain[])),CT_PREPARE_2 = get_ct(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tid_pd = tidMain[],dev_pd = devMain[],!1 = @sid_2]
+iccid_3 = iccid_2[profile_auth_mac_2 = auth_mac(mk_bpp_body(tidMain[],kem_pk(SK_EU_PROFILE_1),get_ct(kem_encaps(kem_pk(SK_EU_PROFILE_1))),senc(secret_profile[],kdf_enc(get_ss(kem_encaps(kem_pk(SK_EU_PROFILE_1)))))),kdf_bind(get_ss(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tidMain[])),CT_PROFILE_AUTH_2 = get_ct(kem_encaps(kem_pk(SK_EUICC_KEM[]))),CT_PROFILE_2 = get_ct(kem_encaps(kem_pk(SK_EU_PROFILE_1))),bpp_mac_2 = profile_mac(mk_bpp_body(tidMain[],kem_pk(SK_EU_PROFILE_1),get_ct(kem_encaps(kem_pk(SK_EU_PROFILE_1))),senc(secret_profile[],kdf_enc(get_ss(kem_encaps(kem_pk(SK_EU_PROFILE_1)))))),kdf_mac(get_ss(kem_encaps(kem_pk(SK_EU_PROFILE_1))))),bpp_body_2 = mk_bpp_body(tidMain[],kem_pk(SK_EU_PROFILE_1),get_ct(kem_encaps(kem_pk(SK_EU_PROFILE_1))),senc(secret_profile[],kdf_enc(get_ss(kem_encaps(kem_pk(SK_EU_PROFILE_1)))))),tid_bpp = tidMain[],dev_bpp = devMain[],prepare_mac_2 = auth_mac(mk_prepare_data(tidMain[]),kdf_bind(get_ss(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tidMain[])),CT_PREPARE_2 = get_ct(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tid_pd = tidMain[],dev_pd = devMain[],!1 = @sid_2]
+SK_EU_PROFILE_2 = SK_EU_PROFILE[prepare_mac_2 = auth_mac(mk_prepare_data(tidMain[]),kdf_bind(get_ss(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tidMain[])),CT_PREPARE_2 = get_ct(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tid_pd = tidMain[],dev_pd = devMain[],!1 = @sid_3]
+@occ47_1 = @occ47[install_mac = auth_mac(mk_install_result(tidMain[],iccid_3),kdf_bind_install(get_ss(kem_encaps(kem_pk(SK_SMDP_KEM))),tidMain[],iccid_3)),CT_INSTALL = get_ct(kem_encaps(kem_pk(SK_SMDP_KEM))),iccid = iccid_3,tid4 = tidMain[],devS4 = devMain[],resp_mac = auth_mac(mk_prepare_response(tidMain[],kem_pk(SK_EU_PROFILE_2)),kdf_bind(get_ss(kem_encaps(kem_pk(SK_SMDP_KEM))),tidMain[])),CT_RESP = get_ct(kem_encaps(kem_pk(SK_SMDP_KEM))),PK_EU_PROFILE = kem_pk(SK_EU_PROFILE_2),tid3 = tidMain[],devS3 = devMain[],!1 = @sid]
+SK_EU_PROFILE_3 = SK_EU_PROFILE[prepare_mac_2 = auth_mac(mk_prepare_data(tidMain[]),kdf_bind(get_ss(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tidMain[])),CT_PREPARE_2 = get_ct(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tid_pd = tidMain[],dev_pd = devMain[],!1 = @sid_4]
+@occ47_2 = @occ47[install_mac = auth_mac(mk_install_result(tidMain[],iccid_3),kdf_bind_install(get_ss(kem_encaps(kem_pk(SK_SMDP_KEM))),tidMain[],iccid_3)),CT_INSTALL = get_ct(kem_encaps(kem_pk(SK_SMDP_KEM))),iccid = iccid_3,tid4 = tidMain[],devS4 = devMain[],resp_mac = auth_mac(mk_prepare_response(tidMain[],kem_pk(SK_EU_PROFILE_3)),kdf_bind(get_ss(kem_encaps(kem_pk(SK_SMDP_KEM))),tidMain[])),CT_RESP = get_ct(kem_encaps(kem_pk(SK_SMDP_KEM))),PK_EU_PROFILE = kem_pk(SK_EU_PROFILE_3),tid3 = tidMain[],devS3 = devMain[],!1 = @sid_1]
+@occ101_2 = @occ101_1[profile_auth_mac_2 = auth_mac(mk_bpp_body(tidMain[],kem_pk(SK_EU_PROFILE_1),get_ct(kem_encaps(kem_pk(SK_EU_PROFILE_1))),senc(secret_profile[],kdf_enc(get_ss(kem_encaps(kem_pk(SK_EU_PROFILE_1)))))),kdf_bind(get_ss(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tidMain[])),CT_PROFILE_AUTH_2 = get_ct(kem_encaps(kem_pk(SK_EUICC_KEM[]))),CT_PROFILE_2 = get_ct(kem_encaps(kem_pk(SK_EU_PROFILE_1))),bpp_mac_2 = profile_mac(mk_bpp_body(tidMain[],kem_pk(SK_EU_PROFILE_1),get_ct(kem_encaps(kem_pk(SK_EU_PROFILE_1))),senc(secret_profile[],kdf_enc(get_ss(kem_encaps(kem_pk(SK_EU_PROFILE_1)))))),kdf_mac(get_ss(kem_encaps(kem_pk(SK_EU_PROFILE_1))))),bpp_body_2 = mk_bpp_body(tidMain[],kem_pk(SK_EU_PROFILE_1),get_ct(kem_encaps(kem_pk(SK_EU_PROFILE_1))),senc(secret_profile[],kdf_enc(get_ss(kem_encaps(kem_pk(SK_EU_PROFILE_1)))))),tid_bpp = tidMain[],dev_bpp = devMain[],prepare_mac_2 = auth_mac(mk_prepare_data(tidMain[]),kdf_bind(get_ss(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tidMain[])),CT_PREPARE_2 = get_ct(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tid_pd = tidMain[],dev_pd = devMain[],!1 = @sid_2]
+
+Derivation:
+Abbreviations:
+SK_EU_PROFILE_1 = SK_EU_PROFILE[prepare_mac_2 = auth_mac(mk_prepare_data(tidMain[]),kdf_bind(get_ss(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tidMain[])),CT_PREPARE_2 = get_ct(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tid_pd = tidMain[],dev_pd = devMain[],!1 = @sid]
+iccid_3 = iccid_2[profile_auth_mac_2 = auth_mac(mk_bpp_body(tidMain[],kem_pk(SK_EU_PROFILE_1),get_ct(kem_encaps(kem_pk(SK_EU_PROFILE_1))),senc(secret_profile[],kdf_enc(get_ss(kem_encaps(kem_pk(SK_EU_PROFILE_1)))))),kdf_bind(get_ss(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tidMain[])),CT_PROFILE_AUTH_2 = get_ct(kem_encaps(kem_pk(SK_EUICC_KEM[]))),CT_PROFILE_2 = get_ct(kem_encaps(kem_pk(SK_EU_PROFILE_1))),bpp_mac_2 = profile_mac(mk_bpp_body(tidMain[],kem_pk(SK_EU_PROFILE_1),get_ct(kem_encaps(kem_pk(SK_EU_PROFILE_1))),senc(secret_profile[],kdf_enc(get_ss(kem_encaps(kem_pk(SK_EU_PROFILE_1)))))),kdf_mac(get_ss(kem_encaps(kem_pk(SK_EU_PROFILE_1))))),bpp_body_2 = mk_bpp_body(tidMain[],kem_pk(SK_EU_PROFILE_1),get_ct(kem_encaps(kem_pk(SK_EU_PROFILE_1))),senc(secret_profile[],kdf_enc(get_ss(kem_encaps(kem_pk(SK_EU_PROFILE_1)))))),tid_bpp = tidMain[],dev_bpp = devMain[],prepare_mac_2 = auth_mac(mk_prepare_data(tidMain[]),kdf_bind(get_ss(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tidMain[])),CT_PREPARE_2 = get_ct(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tid_pd = tidMain[],dev_pd = devMain[],!1 = @sid]
+SK_EU_PROFILE_2 = SK_EU_PROFILE[prepare_mac_2 = auth_mac(mk_prepare_data(tidMain[]),kdf_bind(get_ss(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tidMain[])),CT_PREPARE_2 = get_ct(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tid_pd = tidMain[],dev_pd = devMain[],!1 = @sid_1]
+@occ47_1 = @occ47[install_mac = auth_mac(mk_install_result(tidMain[],iccid_3),kdf_bind_install(get_ss(kem_encaps(kem_pk(SK_SMDP_KEM))),tidMain[],iccid_3)),CT_INSTALL = get_ct(kem_encaps(kem_pk(SK_SMDP_KEM))),iccid = iccid_3,tid4 = tidMain[],devS4 = devMain[],resp_mac = auth_mac(mk_prepare_response(tidMain[],kem_pk(SK_EU_PROFILE_2)),kdf_bind(get_ss(kem_encaps(kem_pk(SK_SMDP_KEM))),tidMain[])),CT_RESP = get_ct(kem_encaps(kem_pk(SK_SMDP_KEM))),PK_EU_PROFILE = kem_pk(SK_EU_PROFILE_2),tid3 = tidMain[],devS3 = devMain[],!1 = @sid_2]
+SK_EU_PROFILE_3 = SK_EU_PROFILE[prepare_mac_2 = auth_mac(mk_prepare_data(tidMain[]),kdf_bind(get_ss(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tidMain[])),CT_PREPARE_2 = get_ct(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tid_pd = tidMain[],dev_pd = devMain[],!1 = @sid_3]
+@occ47_2 = @occ47[install_mac = auth_mac(mk_install_result(tidMain[],iccid_3),kdf_bind_install(get_ss(kem_encaps(kem_pk(SK_SMDP_KEM))),tidMain[],iccid_3)),CT_INSTALL = get_ct(kem_encaps(kem_pk(SK_SMDP_KEM))),iccid = iccid_3,tid4 = tidMain[],devS4 = devMain[],resp_mac = auth_mac(mk_prepare_response(tidMain[],kem_pk(SK_EU_PROFILE_3)),kdf_bind(get_ss(kem_encaps(kem_pk(SK_SMDP_KEM))),tidMain[])),CT_RESP = get_ct(kem_encaps(kem_pk(SK_SMDP_KEM))),PK_EU_PROFILE = kem_pk(SK_EU_PROFILE_3),tid3 = tidMain[],devS3 = devMain[],!1 = @sid_4]
+@occ101_2 = @occ101_1[profile_auth_mac_2 = auth_mac(mk_bpp_body(tidMain[],kem_pk(SK_EU_PROFILE_1),get_ct(kem_encaps(kem_pk(SK_EU_PROFILE_1))),senc(secret_profile[],kdf_enc(get_ss(kem_encaps(kem_pk(SK_EU_PROFILE_1)))))),kdf_bind(get_ss(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tidMain[])),CT_PROFILE_AUTH_2 = get_ct(kem_encaps(kem_pk(SK_EUICC_KEM[]))),CT_PROFILE_2 = get_ct(kem_encaps(kem_pk(SK_EU_PROFILE_1))),bpp_mac_2 = profile_mac(mk_bpp_body(tidMain[],kem_pk(SK_EU_PROFILE_1),get_ct(kem_encaps(kem_pk(SK_EU_PROFILE_1))),senc(secret_profile[],kdf_enc(get_ss(kem_encaps(kem_pk(SK_EU_PROFILE_1)))))),kdf_mac(get_ss(kem_encaps(kem_pk(SK_EU_PROFILE_1))))),bpp_body_2 = mk_bpp_body(tidMain[],kem_pk(SK_EU_PROFILE_1),get_ct(kem_encaps(kem_pk(SK_EU_PROFILE_1))),senc(secret_profile[],kdf_enc(get_ss(kem_encaps(kem_pk(SK_EU_PROFILE_1)))))),tid_bpp = tidMain[],dev_bpp = devMain[],prepare_mac_2 = auth_mac(mk_prepare_data(tidMain[]),kdf_bind(get_ss(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tidMain[])),CT_PREPARE_2 = get_ct(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tid_pd = tidMain[],dev_pd = devMain[],!1 = @sid]
+SK_EU_PROFILE_4 = SK_EU_PROFILE[prepare_mac_2 = auth_mac(mk_prepare_data(tidMain[]),kdf_bind(get_ss(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tidMain[])),CT_PREPARE_2 = get_ct(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tid_pd = tidMain[],dev_pd = devMain[],!1 = @sid_5]
+SK_EU_PROFILE_5 = SK_EU_PROFILE[prepare_mac_2 = auth_mac(mk_prepare_data(tidMain[]),kdf_bind(get_ss(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tidMain[])),CT_PREPARE_2 = get_ct(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tid_pd = tidMain[],dev_pd = devMain[],!1 = @sid_6]
+
+1. The message (devMain[],tidMain[],get_ct(kem_encaps(kem_pk(SK_EUICC_KEM[]))),auth_mac(mk_prepare_data(tidMain[]),kdf_bind(get_ss(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tidMain[]))) may be sent on channel LPA2SMDP[] at output {17}.
+mess(LPA2SMDP[],(devMain[],tidMain[],get_ct(kem_encaps(kem_pk(SK_EUICC_KEM[]))),auth_mac(mk_prepare_data(tidMain[]),kdf_bind(get_ss(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tidMain[])))).
+
+2. The message (devMain[],tidMain[],get_ct(kem_encaps(kem_pk(SK_EUICC_KEM[]))),auth_mac(mk_prepare_data(tidMain[]),kdf_bind(get_ss(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tidMain[]))) may be sent on channel LPA2SMDP[] at output {17}.
+mess(LPA2SMDP[],(devMain[],tidMain[],get_ct(kem_encaps(kem_pk(SK_EUICC_KEM[]))),auth_mac(mk_prepare_data(tidMain[]),kdf_bind(get_ss(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tidMain[])))).
+
+3. The message (devMain[],tidMain[],get_ct(kem_encaps(kem_pk(SK_EUICC_KEM[]))),auth_mac(mk_prepare_data(tidMain[]),kdf_bind(get_ss(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tidMain[]))) that may be sent on channel LPA2SMDP[] by 2 may be received at input {51}.
+So the message (t_prepDownload,devMain[],tidMain[],get_ct(kem_encaps(kem_pk(SK_EUICC_KEM[]))),auth_mac(mk_prepare_data(tidMain[]),kdf_bind(get_ss(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tidMain[]))) may be sent on channel LPA2EUICC[] at output {54}.
+mess(LPA2EUICC[],(t_prepDownload,devMain[],tidMain[],get_ct(kem_encaps(kem_pk(SK_EUICC_KEM[]))),auth_mac(mk_prepare_data(tidMain[]),kdf_bind(get_ss(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tidMain[])))).
+
+4. The message (t_prepDownload,devMain[],tidMain[],get_ct(kem_encaps(kem_pk(SK_EUICC_KEM[]))),auth_mac(mk_prepare_data(tidMain[]),kdf_bind(get_ss(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tidMain[]))) that may be sent on channel LPA2EUICC[] by 3 may be received at input {71}.
+So the message (devMain[],tidMain[],kem_pk(SK_EU_PROFILE_3),get_ct(kem_encaps(kem_pk(SK_SMDP_KEM))),auth_mac(mk_prepare_response(tidMain[],kem_pk(SK_EU_PROFILE_3)),kdf_bind(get_ss(kem_encaps(kem_pk(SK_SMDP_KEM))),tidMain[]))) may be sent on channel LPA2EUICC[] at output {86}.
+mess(LPA2EUICC[],(devMain[],tidMain[],kem_pk(SK_EU_PROFILE_3),get_ct(kem_encaps(kem_pk(SK_SMDP_KEM))),auth_mac(mk_prepare_response(tidMain[],kem_pk(SK_EU_PROFILE_3)),kdf_bind(get_ss(kem_encaps(kem_pk(SK_SMDP_KEM))),tidMain[])))).
+
+5. The message (devMain[],tidMain[],get_ct(kem_encaps(kem_pk(SK_EUICC_KEM[]))),auth_mac(mk_prepare_data(tidMain[]),kdf_bind(get_ss(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tidMain[]))) that may be sent on channel LPA2SMDP[] by 1 may be received at input {51}.
+The message (devMain[],tidMain[],kem_pk(SK_EU_PROFILE_3),get_ct(kem_encaps(kem_pk(SK_SMDP_KEM))),auth_mac(mk_prepare_response(tidMain[],kem_pk(SK_EU_PROFILE_3)),kdf_bind(get_ss(kem_encaps(kem_pk(SK_SMDP_KEM))),tidMain[]))) that may be sent on channel LPA2EUICC[] by 4 may be received at input {55}.
+So the message (devMain[],tidMain[],kem_pk(SK_EU_PROFILE_3),get_ct(kem_encaps(kem_pk(SK_SMDP_KEM))),auth_mac(mk_prepare_response(tidMain[],kem_pk(SK_EU_PROFILE_3)),kdf_bind(get_ss(kem_encaps(kem_pk(SK_SMDP_KEM))),tidMain[]))) may be sent on channel LPA2SMDP[] at output {58}.
+mess(LPA2SMDP[],(devMain[],tidMain[],kem_pk(SK_EU_PROFILE_3),get_ct(kem_encaps(kem_pk(SK_SMDP_KEM))),auth_mac(mk_prepare_response(tidMain[],kem_pk(SK_EU_PROFILE_3)),kdf_bind(get_ss(kem_encaps(kem_pk(SK_SMDP_KEM))),tidMain[])))).
+
+6. The message (devMain[],tidMain[],get_ct(kem_encaps(kem_pk(SK_EUICC_KEM[]))),auth_mac(mk_prepare_data(tidMain[]),kdf_bind(get_ss(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tidMain[]))) may be sent on channel LPA2SMDP[] at output {17}.
+mess(LPA2SMDP[],(devMain[],tidMain[],get_ct(kem_encaps(kem_pk(SK_EUICC_KEM[]))),auth_mac(mk_prepare_data(tidMain[]),kdf_bind(get_ss(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tidMain[])))).
+
+7. The message (devMain[],tidMain[],get_ct(kem_encaps(kem_pk(SK_EUICC_KEM[]))),auth_mac(mk_prepare_data(tidMain[]),kdf_bind(get_ss(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tidMain[]))) may be sent on channel LPA2SMDP[] at output {17}.
+mess(LPA2SMDP[],(devMain[],tidMain[],get_ct(kem_encaps(kem_pk(SK_EUICC_KEM[]))),auth_mac(mk_prepare_data(tidMain[]),kdf_bind(get_ss(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tidMain[])))).
+
+8. The message (devMain[],tidMain[],get_ct(kem_encaps(kem_pk(SK_EUICC_KEM[]))),auth_mac(mk_prepare_data(tidMain[]),kdf_bind(get_ss(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tidMain[]))) that may be sent on channel LPA2SMDP[] by 7 may be received at input {51}.
+So the message (t_prepDownload,devMain[],tidMain[],get_ct(kem_encaps(kem_pk(SK_EUICC_KEM[]))),auth_mac(mk_prepare_data(tidMain[]),kdf_bind(get_ss(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tidMain[]))) may be sent on channel LPA2EUICC[] at output {54}.
+mess(LPA2EUICC[],(t_prepDownload,devMain[],tidMain[],get_ct(kem_encaps(kem_pk(SK_EUICC_KEM[]))),auth_mac(mk_prepare_data(tidMain[]),kdf_bind(get_ss(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tidMain[])))).
+
+9. The message (devMain[],tidMain[],get_ct(kem_encaps(kem_pk(SK_EUICC_KEM[]))),auth_mac(mk_prepare_data(tidMain[]),kdf_bind(get_ss(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tidMain[]))) may be sent on channel LPA2SMDP[] at output {17}.
+mess(LPA2SMDP[],(devMain[],tidMain[],get_ct(kem_encaps(kem_pk(SK_EUICC_KEM[]))),auth_mac(mk_prepare_data(tidMain[]),kdf_bind(get_ss(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tidMain[])))).
+
+10. The message (devMain[],tidMain[],get_ct(kem_encaps(kem_pk(SK_EUICC_KEM[]))),auth_mac(mk_prepare_data(tidMain[]),kdf_bind(get_ss(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tidMain[]))) may be sent on channel LPA2SMDP[] at output {17}.
+mess(LPA2SMDP[],(devMain[],tidMain[],get_ct(kem_encaps(kem_pk(SK_EUICC_KEM[]))),auth_mac(mk_prepare_data(tidMain[]),kdf_bind(get_ss(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tidMain[])))).
+
+11. The message (devMain[],tidMain[],get_ct(kem_encaps(kem_pk(SK_EUICC_KEM[]))),auth_mac(mk_prepare_data(tidMain[]),kdf_bind(get_ss(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tidMain[]))) that may be sent on channel LPA2SMDP[] by 10 may be received at input {51}.
+So the message (t_prepDownload,devMain[],tidMain[],get_ct(kem_encaps(kem_pk(SK_EUICC_KEM[]))),auth_mac(mk_prepare_data(tidMain[]),kdf_bind(get_ss(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tidMain[]))) may be sent on channel LPA2EUICC[] at output {54}.
+mess(LPA2EUICC[],(t_prepDownload,devMain[],tidMain[],get_ct(kem_encaps(kem_pk(SK_EUICC_KEM[]))),auth_mac(mk_prepare_data(tidMain[]),kdf_bind(get_ss(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tidMain[])))).
+
+12. The message (t_prepDownload,devMain[],tidMain[],get_ct(kem_encaps(kem_pk(SK_EUICC_KEM[]))),auth_mac(mk_prepare_data(tidMain[]),kdf_bind(get_ss(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tidMain[]))) that may be sent on channel LPA2EUICC[] by 11 may be received at input {71}.
+So the message (devMain[],tidMain[],kem_pk(SK_EU_PROFILE_5),get_ct(kem_encaps(kem_pk(SK_SMDP_KEM))),auth_mac(mk_prepare_response(tidMain[],kem_pk(SK_EU_PROFILE_5)),kdf_bind(get_ss(kem_encaps(kem_pk(SK_SMDP_KEM))),tidMain[]))) may be sent on channel LPA2EUICC[] at output {86}.
+mess(LPA2EUICC[],(devMain[],tidMain[],kem_pk(SK_EU_PROFILE_5),get_ct(kem_encaps(kem_pk(SK_SMDP_KEM))),auth_mac(mk_prepare_response(tidMain[],kem_pk(SK_EU_PROFILE_5)),kdf_bind(get_ss(kem_encaps(kem_pk(SK_SMDP_KEM))),tidMain[])))).
+
+13. The message (devMain[],tidMain[],get_ct(kem_encaps(kem_pk(SK_EUICC_KEM[]))),auth_mac(mk_prepare_data(tidMain[]),kdf_bind(get_ss(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tidMain[]))) may be sent on channel LPA2SMDP[] at output {17}.
+mess(LPA2SMDP[],(devMain[],tidMain[],get_ct(kem_encaps(kem_pk(SK_EUICC_KEM[]))),auth_mac(mk_prepare_data(tidMain[]),kdf_bind(get_ss(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tidMain[])))).
+
+14. The message (devMain[],tidMain[],get_ct(kem_encaps(kem_pk(SK_EUICC_KEM[]))),auth_mac(mk_prepare_data(tidMain[]),kdf_bind(get_ss(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tidMain[]))) may be sent on channel LPA2SMDP[] at output {17}.
+mess(LPA2SMDP[],(devMain[],tidMain[],get_ct(kem_encaps(kem_pk(SK_EUICC_KEM[]))),auth_mac(mk_prepare_data(tidMain[]),kdf_bind(get_ss(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tidMain[])))).
+
+15. The message (devMain[],tidMain[],get_ct(kem_encaps(kem_pk(SK_EUICC_KEM[]))),auth_mac(mk_prepare_data(tidMain[]),kdf_bind(get_ss(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tidMain[]))) that may be sent on channel LPA2SMDP[] by 14 may be received at input {51}.
+So the message (t_prepDownload,devMain[],tidMain[],get_ct(kem_encaps(kem_pk(SK_EUICC_KEM[]))),auth_mac(mk_prepare_data(tidMain[]),kdf_bind(get_ss(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tidMain[]))) may be sent on channel LPA2EUICC[] at output {54}.
+mess(LPA2EUICC[],(t_prepDownload,devMain[],tidMain[],get_ct(kem_encaps(kem_pk(SK_EUICC_KEM[]))),auth_mac(mk_prepare_data(tidMain[]),kdf_bind(get_ss(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tidMain[])))).
+
+16. The message (t_prepDownload,devMain[],tidMain[],get_ct(kem_encaps(kem_pk(SK_EUICC_KEM[]))),auth_mac(mk_prepare_data(tidMain[]),kdf_bind(get_ss(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tidMain[]))) that may be sent on channel LPA2EUICC[] by 15 may be received at input {71}.
+So the message (devMain[],tidMain[],kem_pk(SK_EU_PROFILE_1),get_ct(kem_encaps(kem_pk(SK_SMDP_KEM))),auth_mac(mk_prepare_response(tidMain[],kem_pk(SK_EU_PROFILE_1)),kdf_bind(get_ss(kem_encaps(kem_pk(SK_SMDP_KEM))),tidMain[]))) may be sent on channel LPA2EUICC[] at output {86}.
+mess(LPA2EUICC[],(devMain[],tidMain[],kem_pk(SK_EU_PROFILE_1),get_ct(kem_encaps(kem_pk(SK_SMDP_KEM))),auth_mac(mk_prepare_response(tidMain[],kem_pk(SK_EU_PROFILE_1)),kdf_bind(get_ss(kem_encaps(kem_pk(SK_SMDP_KEM))),tidMain[])))).
+
+17. The message (devMain[],tidMain[],get_ct(kem_encaps(kem_pk(SK_EUICC_KEM[]))),auth_mac(mk_prepare_data(tidMain[]),kdf_bind(get_ss(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tidMain[]))) that may be sent on channel LPA2SMDP[] by 13 may be received at input {51}.
+The message (devMain[],tidMain[],kem_pk(SK_EU_PROFILE_1),get_ct(kem_encaps(kem_pk(SK_SMDP_KEM))),auth_mac(mk_prepare_response(tidMain[],kem_pk(SK_EU_PROFILE_1)),kdf_bind(get_ss(kem_encaps(kem_pk(SK_SMDP_KEM))),tidMain[]))) that may be sent on channel LPA2EUICC[] by 16 may be received at input {55}.
+So the message (devMain[],tidMain[],kem_pk(SK_EU_PROFILE_1),get_ct(kem_encaps(kem_pk(SK_SMDP_KEM))),auth_mac(mk_prepare_response(tidMain[],kem_pk(SK_EU_PROFILE_1)),kdf_bind(get_ss(kem_encaps(kem_pk(SK_SMDP_KEM))),tidMain[]))) may be sent on channel LPA2SMDP[] at output {58}.
+mess(LPA2SMDP[],(devMain[],tidMain[],kem_pk(SK_EU_PROFILE_1),get_ct(kem_encaps(kem_pk(SK_SMDP_KEM))),auth_mac(mk_prepare_response(tidMain[],kem_pk(SK_EU_PROFILE_1)),kdf_bind(get_ss(kem_encaps(kem_pk(SK_SMDP_KEM))),tidMain[])))).
+
+18. The message (devMain[],tidMain[],kem_pk(SK_EU_PROFILE_1),get_ct(kem_encaps(kem_pk(SK_SMDP_KEM))),auth_mac(mk_prepare_response(tidMain[],kem_pk(SK_EU_PROFILE_1)),kdf_bind(get_ss(kem_encaps(kem_pk(SK_SMDP_KEM))),tidMain[]))) that may be sent on channel LPA2SMDP[] by 17 may be received at input {18}.
+So the message (devMain[],tidMain[],mk_bpp_body(tidMain[],kem_pk(SK_EU_PROFILE_1),get_ct(kem_encaps(kem_pk(SK_EU_PROFILE_1))),senc(secret_profile[],kdf_enc(get_ss(kem_encaps(kem_pk(SK_EU_PROFILE_1)))))),profile_mac(mk_bpp_body(tidMain[],kem_pk(SK_EU_PROFILE_1),get_ct(kem_encaps(kem_pk(SK_EU_PROFILE_1))),senc(secret_profile[],kdf_enc(get_ss(kem_encaps(kem_pk(SK_EU_PROFILE_1)))))),kdf_mac(get_ss(kem_encaps(kem_pk(SK_EU_PROFILE_1))))),get_ct(kem_encaps(kem_pk(SK_EU_PROFILE_1))),get_ct(kem_encaps(kem_pk(SK_EUICC_KEM[]))),auth_mac(mk_bpp_body(tidMain[],kem_pk(SK_EU_PROFILE_1),get_ct(kem_encaps(kem_pk(SK_EU_PROFILE_1))),senc(secret_profile[],kdf_enc(get_ss(kem_encaps(kem_pk(SK_EU_PROFILE_1)))))),kdf_bind(get_ss(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tidMain[]))) may be sent on channel LPA2SMDP[] at output {40}.
+mess(LPA2SMDP[],(devMain[],tidMain[],mk_bpp_body(tidMain[],kem_pk(SK_EU_PROFILE_1),get_ct(kem_encaps(kem_pk(SK_EU_PROFILE_1))),senc(secret_profile[],kdf_enc(get_ss(kem_encaps(kem_pk(SK_EU_PROFILE_1)))))),profile_mac(mk_bpp_body(tidMain[],kem_pk(SK_EU_PROFILE_1),get_ct(kem_encaps(kem_pk(SK_EU_PROFILE_1))),senc(secret_profile[],kdf_enc(get_ss(kem_encaps(kem_pk(SK_EU_PROFILE_1)))))),kdf_mac(get_ss(kem_encaps(kem_pk(SK_EU_PROFILE_1))))),get_ct(kem_encaps(kem_pk(SK_EU_PROFILE_1))),get_ct(kem_encaps(kem_pk(SK_EUICC_KEM[]))),auth_mac(mk_bpp_body(tidMain[],kem_pk(SK_EU_PROFILE_1),get_ct(kem_encaps(kem_pk(SK_EU_PROFILE_1))),senc(secret_profile[],kdf_enc(get_ss(kem_encaps(kem_pk(SK_EU_PROFILE_1)))))),kdf_bind(get_ss(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tidMain[])))).
+
+19. The message (devMain[],tidMain[],get_ct(kem_encaps(kem_pk(SK_EUICC_KEM[]))),auth_mac(mk_prepare_data(tidMain[]),kdf_bind(get_ss(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tidMain[]))) that may be sent on channel LPA2SMDP[] by 9 may be received at input {51}.
+The message (devMain[],tidMain[],kem_pk(SK_EU_PROFILE_5),get_ct(kem_encaps(kem_pk(SK_SMDP_KEM))),auth_mac(mk_prepare_response(tidMain[],kem_pk(SK_EU_PROFILE_5)),kdf_bind(get_ss(kem_encaps(kem_pk(SK_SMDP_KEM))),tidMain[]))) that may be sent on channel LPA2EUICC[] by 12 may be received at input {55}.
+The message (devMain[],tidMain[],mk_bpp_body(tidMain[],kem_pk(SK_EU_PROFILE_1),get_ct(kem_encaps(kem_pk(SK_EU_PROFILE_1))),senc(secret_profile[],kdf_enc(get_ss(kem_encaps(kem_pk(SK_EU_PROFILE_1)))))),profile_mac(mk_bpp_body(tidMain[],kem_pk(SK_EU_PROFILE_1),get_ct(kem_encaps(kem_pk(SK_EU_PROFILE_1))),senc(secret_profile[],kdf_enc(get_ss(kem_encaps(kem_pk(SK_EU_PROFILE_1)))))),kdf_mac(get_ss(kem_encaps(kem_pk(SK_EU_PROFILE_1))))),get_ct(kem_encaps(kem_pk(SK_EU_PROFILE_1))),get_ct(kem_encaps(kem_pk(SK_EUICC_KEM[]))),auth_mac(mk_bpp_body(tidMain[],kem_pk(SK_EU_PROFILE_1),get_ct(kem_encaps(kem_pk(SK_EU_PROFILE_1))),senc(secret_profile[],kdf_enc(get_ss(kem_encaps(kem_pk(SK_EU_PROFILE_1)))))),kdf_bind(get_ss(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tidMain[]))) that may be sent on channel LPA2SMDP[] by 18 may be received at input {59}.
+So the message (t_loadBPP,devMain[],tidMain[],mk_bpp_body(tidMain[],kem_pk(SK_EU_PROFILE_1),get_ct(kem_encaps(kem_pk(SK_EU_PROFILE_1))),senc(secret_profile[],kdf_enc(get_ss(kem_encaps(kem_pk(SK_EU_PROFILE_1)))))),profile_mac(mk_bpp_body(tidMain[],kem_pk(SK_EU_PROFILE_1),get_ct(kem_encaps(kem_pk(SK_EU_PROFILE_1))),senc(secret_profile[],kdf_enc(get_ss(kem_encaps(kem_pk(SK_EU_PROFILE_1)))))),kdf_mac(get_ss(kem_encaps(kem_pk(SK_EU_PROFILE_1))))),get_ct(kem_encaps(kem_pk(SK_EU_PROFILE_1))),get_ct(kem_encaps(kem_pk(SK_EUICC_KEM[]))),auth_mac(mk_bpp_body(tidMain[],kem_pk(SK_EU_PROFILE_1),get_ct(kem_encaps(kem_pk(SK_EU_PROFILE_1))),senc(secret_profile[],kdf_enc(get_ss(kem_encaps(kem_pk(SK_EU_PROFILE_1)))))),kdf_bind(get_ss(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tidMain[]))) may be sent on channel LPA2EUICC[] at output {62}.
+mess(LPA2EUICC[],(t_loadBPP,devMain[],tidMain[],mk_bpp_body(tidMain[],kem_pk(SK_EU_PROFILE_1),get_ct(kem_encaps(kem_pk(SK_EU_PROFILE_1))),senc(secret_profile[],kdf_enc(get_ss(kem_encaps(kem_pk(SK_EU_PROFILE_1)))))),profile_mac(mk_bpp_body(tidMain[],kem_pk(SK_EU_PROFILE_1),get_ct(kem_encaps(kem_pk(SK_EU_PROFILE_1))),senc(secret_profile[],kdf_enc(get_ss(kem_encaps(kem_pk(SK_EU_PROFILE_1)))))),kdf_mac(get_ss(kem_encaps(kem_pk(SK_EU_PROFILE_1))))),get_ct(kem_encaps(kem_pk(SK_EU_PROFILE_1))),get_ct(kem_encaps(kem_pk(SK_EUICC_KEM[]))),auth_mac(mk_bpp_body(tidMain[],kem_pk(SK_EU_PROFILE_1),get_ct(kem_encaps(kem_pk(SK_EU_PROFILE_1))),senc(secret_profile[],kdf_enc(get_ss(kem_encaps(kem_pk(SK_EU_PROFILE_1)))))),kdf_bind(get_ss(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tidMain[])))).
+
+20. The message (t_prepDownload,devMain[],tidMain[],get_ct(kem_encaps(kem_pk(SK_EUICC_KEM[]))),auth_mac(mk_prepare_data(tidMain[]),kdf_bind(get_ss(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tidMain[]))) that may be sent on channel LPA2EUICC[] by 8 may be received at input {71}.
+The message (t_loadBPP,devMain[],tidMain[],mk_bpp_body(tidMain[],kem_pk(SK_EU_PROFILE_1),get_ct(kem_encaps(kem_pk(SK_EU_PROFILE_1))),senc(secret_profile[],kdf_enc(get_ss(kem_encaps(kem_pk(SK_EU_PROFILE_1)))))),profile_mac(mk_bpp_body(tidMain[],kem_pk(SK_EU_PROFILE_1),get_ct(kem_encaps(kem_pk(SK_EU_PROFILE_1))),senc(secret_profile[],kdf_enc(get_ss(kem_encaps(kem_pk(SK_EU_PROFILE_1)))))),kdf_mac(get_ss(kem_encaps(kem_pk(SK_EU_PROFILE_1))))),get_ct(kem_encaps(kem_pk(SK_EU_PROFILE_1))),get_ct(kem_encaps(kem_pk(SK_EUICC_KEM[]))),auth_mac(mk_bpp_body(tidMain[],kem_pk(SK_EU_PROFILE_1),get_ct(kem_encaps(kem_pk(SK_EU_PROFILE_1))),senc(secret_profile[],kdf_enc(get_ss(kem_encaps(kem_pk(SK_EU_PROFILE_1)))))),kdf_bind(get_ss(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tidMain[]))) that may be sent on channel LPA2EUICC[] by 19 may be received at input {87}.
+The event EUICC_PROFILE_INSTALLED(devMain[],tidMain[],secret_profile[],iccid_3) (with occurrence name @occ101_2) may be executed at {101}.
+So the message (devMain[],tidMain[],iccid_3,get_ct(kem_encaps(kem_pk(SK_SMDP_KEM))),auth_mac(mk_install_result(tidMain[],iccid_3),kdf_bind_install(get_ss(kem_encaps(kem_pk(SK_SMDP_KEM))),tidMain[],iccid_3))) may be sent on channel LPA2EUICC[] at output {107}.
+mess(LPA2EUICC[],(devMain[],tidMain[],iccid_3,get_ct(kem_encaps(kem_pk(SK_SMDP_KEM))),auth_mac(mk_install_result(tidMain[],iccid_3),kdf_bind_install(get_ss(kem_encaps(kem_pk(SK_SMDP_KEM))),tidMain[],iccid_3)))).
+
+21. The message (devMain[],tidMain[],get_ct(kem_encaps(kem_pk(SK_EUICC_KEM[]))),auth_mac(mk_prepare_data(tidMain[]),kdf_bind(get_ss(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tidMain[]))) that may be sent on channel LPA2SMDP[] by 6 may be received at input {51}.
+The message (devMain[],tidMain[],iccid_3,get_ct(kem_encaps(kem_pk(SK_SMDP_KEM))),auth_mac(mk_install_result(tidMain[],iccid_3),kdf_bind_install(get_ss(kem_encaps(kem_pk(SK_SMDP_KEM))),tidMain[],iccid_3))) that may be sent on channel LPA2EUICC[] by 20 may be received at input {55}.
+So the message (devMain[],tidMain[],iccid_3,get_ct(kem_encaps(kem_pk(SK_SMDP_KEM))),auth_mac(mk_install_result(tidMain[],iccid_3),kdf_bind_install(get_ss(kem_encaps(kem_pk(SK_SMDP_KEM))),tidMain[],iccid_3))) may be sent on channel LPA2SMDP[] at output {58}.
+mess(LPA2SMDP[],(devMain[],tidMain[],iccid_3,get_ct(kem_encaps(kem_pk(SK_SMDP_KEM))),auth_mac(mk_install_result(tidMain[],iccid_3),kdf_bind_install(get_ss(kem_encaps(kem_pk(SK_SMDP_KEM))),tidMain[],iccid_3)))).
+
+22. The message (devMain[],tidMain[],kem_pk(SK_EU_PROFILE_3),get_ct(kem_encaps(kem_pk(SK_SMDP_KEM))),auth_mac(mk_prepare_response(tidMain[],kem_pk(SK_EU_PROFILE_3)),kdf_bind(get_ss(kem_encaps(kem_pk(SK_SMDP_KEM))),tidMain[]))) that may be sent on channel LPA2SMDP[] by 5 may be received at input {18}.
+The message (devMain[],tidMain[],iccid_3,get_ct(kem_encaps(kem_pk(SK_SMDP_KEM))),auth_mac(mk_install_result(tidMain[],iccid_3),kdf_bind_install(get_ss(kem_encaps(kem_pk(SK_SMDP_KEM))),tidMain[],iccid_3))) that may be sent on channel LPA2SMDP[] by 21 may be received at input {41}.
+So event SMDP_INSTALL_CONFIRMED(devMain[],tidMain[],iccid_3) may be executed at {47} in session @sid_4.
+inj-event(SMDP_INSTALL_CONFIRMED(devMain[],tidMain[],iccid_3),@occ47_2).
+
+23. By 22, inj-event(SMDP_INSTALL_CONFIRMED(devMain[],tidMain[],iccid_3),@occ47_2).
+The goal is reached, represented in the following fact:
+inj-event(SMDP_INSTALL_CONFIRMED(devMain[],tidMain[],iccid_3),@occ47_2).
+
+24. The message (devMain[],tidMain[],get_ct(kem_encaps(kem_pk(SK_EUICC_KEM[]))),auth_mac(mk_prepare_data(tidMain[]),kdf_bind(get_ss(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tidMain[]))) may be sent on channel LPA2SMDP[] at output {17}.
+mess(LPA2SMDP[],(devMain[],tidMain[],get_ct(kem_encaps(kem_pk(SK_EUICC_KEM[]))),auth_mac(mk_prepare_data(tidMain[]),kdf_bind(get_ss(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tidMain[])))).
+
+25. The message (devMain[],tidMain[],get_ct(kem_encaps(kem_pk(SK_EUICC_KEM[]))),auth_mac(mk_prepare_data(tidMain[]),kdf_bind(get_ss(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tidMain[]))) may be sent on channel LPA2SMDP[] at output {17}.
+mess(LPA2SMDP[],(devMain[],tidMain[],get_ct(kem_encaps(kem_pk(SK_EUICC_KEM[]))),auth_mac(mk_prepare_data(tidMain[]),kdf_bind(get_ss(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tidMain[])))).
+
+26. The message (devMain[],tidMain[],get_ct(kem_encaps(kem_pk(SK_EUICC_KEM[]))),auth_mac(mk_prepare_data(tidMain[]),kdf_bind(get_ss(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tidMain[]))) that may be sent on channel LPA2SMDP[] by 25 may be received at input {51}.
+So the message (t_prepDownload,devMain[],tidMain[],get_ct(kem_encaps(kem_pk(SK_EUICC_KEM[]))),auth_mac(mk_prepare_data(tidMain[]),kdf_bind(get_ss(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tidMain[]))) may be sent on channel LPA2EUICC[] at output {54}.
+mess(LPA2EUICC[],(t_prepDownload,devMain[],tidMain[],get_ct(kem_encaps(kem_pk(SK_EUICC_KEM[]))),auth_mac(mk_prepare_data(tidMain[]),kdf_bind(get_ss(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tidMain[])))).
+
+27. The message (t_prepDownload,devMain[],tidMain[],get_ct(kem_encaps(kem_pk(SK_EUICC_KEM[]))),auth_mac(mk_prepare_data(tidMain[]),kdf_bind(get_ss(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tidMain[]))) that may be sent on channel LPA2EUICC[] by 26 may be received at input {71}.
+So the message (devMain[],tidMain[],kem_pk(SK_EU_PROFILE_2),get_ct(kem_encaps(kem_pk(SK_SMDP_KEM))),auth_mac(mk_prepare_response(tidMain[],kem_pk(SK_EU_PROFILE_2)),kdf_bind(get_ss(kem_encaps(kem_pk(SK_SMDP_KEM))),tidMain[]))) may be sent on channel LPA2EUICC[] at output {86}.
+mess(LPA2EUICC[],(devMain[],tidMain[],kem_pk(SK_EU_PROFILE_2),get_ct(kem_encaps(kem_pk(SK_SMDP_KEM))),auth_mac(mk_prepare_response(tidMain[],kem_pk(SK_EU_PROFILE_2)),kdf_bind(get_ss(kem_encaps(kem_pk(SK_SMDP_KEM))),tidMain[])))).
+
+28. The message (devMain[],tidMain[],get_ct(kem_encaps(kem_pk(SK_EUICC_KEM[]))),auth_mac(mk_prepare_data(tidMain[]),kdf_bind(get_ss(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tidMain[]))) that may be sent on channel LPA2SMDP[] by 24 may be received at input {51}.
+The message (devMain[],tidMain[],kem_pk(SK_EU_PROFILE_2),get_ct(kem_encaps(kem_pk(SK_SMDP_KEM))),auth_mac(mk_prepare_response(tidMain[],kem_pk(SK_EU_PROFILE_2)),kdf_bind(get_ss(kem_encaps(kem_pk(SK_SMDP_KEM))),tidMain[]))) that may be sent on channel LPA2EUICC[] by 27 may be received at input {55}.
+So the message (devMain[],tidMain[],kem_pk(SK_EU_PROFILE_2),get_ct(kem_encaps(kem_pk(SK_SMDP_KEM))),auth_mac(mk_prepare_response(tidMain[],kem_pk(SK_EU_PROFILE_2)),kdf_bind(get_ss(kem_encaps(kem_pk(SK_SMDP_KEM))),tidMain[]))) may be sent on channel LPA2SMDP[] at output {58}.
+mess(LPA2SMDP[],(devMain[],tidMain[],kem_pk(SK_EU_PROFILE_2),get_ct(kem_encaps(kem_pk(SK_SMDP_KEM))),auth_mac(mk_prepare_response(tidMain[],kem_pk(SK_EU_PROFILE_2)),kdf_bind(get_ss(kem_encaps(kem_pk(SK_SMDP_KEM))),tidMain[])))).
+
+29. The message (devMain[],tidMain[],get_ct(kem_encaps(kem_pk(SK_EUICC_KEM[]))),auth_mac(mk_prepare_data(tidMain[]),kdf_bind(get_ss(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tidMain[]))) may be sent on channel LPA2SMDP[] at output {17}.
+mess(LPA2SMDP[],(devMain[],tidMain[],get_ct(kem_encaps(kem_pk(SK_EUICC_KEM[]))),auth_mac(mk_prepare_data(tidMain[]),kdf_bind(get_ss(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tidMain[])))).
+
+30. The message (devMain[],tidMain[],get_ct(kem_encaps(kem_pk(SK_EUICC_KEM[]))),auth_mac(mk_prepare_data(tidMain[]),kdf_bind(get_ss(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tidMain[]))) may be sent on channel LPA2SMDP[] at output {17}.
+mess(LPA2SMDP[],(devMain[],tidMain[],get_ct(kem_encaps(kem_pk(SK_EUICC_KEM[]))),auth_mac(mk_prepare_data(tidMain[]),kdf_bind(get_ss(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tidMain[])))).
+
+31. The message (devMain[],tidMain[],get_ct(kem_encaps(kem_pk(SK_EUICC_KEM[]))),auth_mac(mk_prepare_data(tidMain[]),kdf_bind(get_ss(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tidMain[]))) that may be sent on channel LPA2SMDP[] by 30 may be received at input {51}.
+So the message (t_prepDownload,devMain[],tidMain[],get_ct(kem_encaps(kem_pk(SK_EUICC_KEM[]))),auth_mac(mk_prepare_data(tidMain[]),kdf_bind(get_ss(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tidMain[]))) may be sent on channel LPA2EUICC[] at output {54}.
+mess(LPA2EUICC[],(t_prepDownload,devMain[],tidMain[],get_ct(kem_encaps(kem_pk(SK_EUICC_KEM[]))),auth_mac(mk_prepare_data(tidMain[]),kdf_bind(get_ss(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tidMain[])))).
+
+32. The message (devMain[],tidMain[],get_ct(kem_encaps(kem_pk(SK_EUICC_KEM[]))),auth_mac(mk_prepare_data(tidMain[]),kdf_bind(get_ss(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tidMain[]))) may be sent on channel LPA2SMDP[] at output {17}.
+mess(LPA2SMDP[],(devMain[],tidMain[],get_ct(kem_encaps(kem_pk(SK_EUICC_KEM[]))),auth_mac(mk_prepare_data(tidMain[]),kdf_bind(get_ss(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tidMain[])))).
+
+33. The message (devMain[],tidMain[],get_ct(kem_encaps(kem_pk(SK_EUICC_KEM[]))),auth_mac(mk_prepare_data(tidMain[]),kdf_bind(get_ss(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tidMain[]))) may be sent on channel LPA2SMDP[] at output {17}.
+mess(LPA2SMDP[],(devMain[],tidMain[],get_ct(kem_encaps(kem_pk(SK_EUICC_KEM[]))),auth_mac(mk_prepare_data(tidMain[]),kdf_bind(get_ss(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tidMain[])))).
+
+34. The message (devMain[],tidMain[],get_ct(kem_encaps(kem_pk(SK_EUICC_KEM[]))),auth_mac(mk_prepare_data(tidMain[]),kdf_bind(get_ss(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tidMain[]))) that may be sent on channel LPA2SMDP[] by 33 may be received at input {51}.
+So the message (t_prepDownload,devMain[],tidMain[],get_ct(kem_encaps(kem_pk(SK_EUICC_KEM[]))),auth_mac(mk_prepare_data(tidMain[]),kdf_bind(get_ss(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tidMain[]))) may be sent on channel LPA2EUICC[] at output {54}.
+mess(LPA2EUICC[],(t_prepDownload,devMain[],tidMain[],get_ct(kem_encaps(kem_pk(SK_EUICC_KEM[]))),auth_mac(mk_prepare_data(tidMain[]),kdf_bind(get_ss(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tidMain[])))).
+
+35. The message (t_prepDownload,devMain[],tidMain[],get_ct(kem_encaps(kem_pk(SK_EUICC_KEM[]))),auth_mac(mk_prepare_data(tidMain[]),kdf_bind(get_ss(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tidMain[]))) that may be sent on channel LPA2EUICC[] by 34 may be received at input {71}.
+So the message (devMain[],tidMain[],kem_pk(SK_EU_PROFILE_4),get_ct(kem_encaps(kem_pk(SK_SMDP_KEM))),auth_mac(mk_prepare_response(tidMain[],kem_pk(SK_EU_PROFILE_4)),kdf_bind(get_ss(kem_encaps(kem_pk(SK_SMDP_KEM))),tidMain[]))) may be sent on channel LPA2EUICC[] at output {86}.
+mess(LPA2EUICC[],(devMain[],tidMain[],kem_pk(SK_EU_PROFILE_4),get_ct(kem_encaps(kem_pk(SK_SMDP_KEM))),auth_mac(mk_prepare_response(tidMain[],kem_pk(SK_EU_PROFILE_4)),kdf_bind(get_ss(kem_encaps(kem_pk(SK_SMDP_KEM))),tidMain[])))).
+
+36. The message (devMain[],tidMain[],get_ct(kem_encaps(kem_pk(SK_EUICC_KEM[]))),auth_mac(mk_prepare_data(tidMain[]),kdf_bind(get_ss(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tidMain[]))) may be sent on channel LPA2SMDP[] at output {17}.
+mess(LPA2SMDP[],(devMain[],tidMain[],get_ct(kem_encaps(kem_pk(SK_EUICC_KEM[]))),auth_mac(mk_prepare_data(tidMain[]),kdf_bind(get_ss(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tidMain[])))).
+
+37. The message (devMain[],tidMain[],get_ct(kem_encaps(kem_pk(SK_EUICC_KEM[]))),auth_mac(mk_prepare_data(tidMain[]),kdf_bind(get_ss(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tidMain[]))) may be sent on channel LPA2SMDP[] at output {17}.
+mess(LPA2SMDP[],(devMain[],tidMain[],get_ct(kem_encaps(kem_pk(SK_EUICC_KEM[]))),auth_mac(mk_prepare_data(tidMain[]),kdf_bind(get_ss(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tidMain[])))).
+
+38. The message (devMain[],tidMain[],get_ct(kem_encaps(kem_pk(SK_EUICC_KEM[]))),auth_mac(mk_prepare_data(tidMain[]),kdf_bind(get_ss(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tidMain[]))) that may be sent on channel LPA2SMDP[] by 37 may be received at input {51}.
+So the message (t_prepDownload,devMain[],tidMain[],get_ct(kem_encaps(kem_pk(SK_EUICC_KEM[]))),auth_mac(mk_prepare_data(tidMain[]),kdf_bind(get_ss(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tidMain[]))) may be sent on channel LPA2EUICC[] at output {54}.
+mess(LPA2EUICC[],(t_prepDownload,devMain[],tidMain[],get_ct(kem_encaps(kem_pk(SK_EUICC_KEM[]))),auth_mac(mk_prepare_data(tidMain[]),kdf_bind(get_ss(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tidMain[])))).
+
+39. The message (t_prepDownload,devMain[],tidMain[],get_ct(kem_encaps(kem_pk(SK_EUICC_KEM[]))),auth_mac(mk_prepare_data(tidMain[]),kdf_bind(get_ss(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tidMain[]))) that may be sent on channel LPA2EUICC[] by 38 may be received at input {71}.
+So the message (devMain[],tidMain[],kem_pk(SK_EU_PROFILE_1),get_ct(kem_encaps(kem_pk(SK_SMDP_KEM))),auth_mac(mk_prepare_response(tidMain[],kem_pk(SK_EU_PROFILE_1)),kdf_bind(get_ss(kem_encaps(kem_pk(SK_SMDP_KEM))),tidMain[]))) may be sent on channel LPA2EUICC[] at output {86}.
+mess(LPA2EUICC[],(devMain[],tidMain[],kem_pk(SK_EU_PROFILE_1),get_ct(kem_encaps(kem_pk(SK_SMDP_KEM))),auth_mac(mk_prepare_response(tidMain[],kem_pk(SK_EU_PROFILE_1)),kdf_bind(get_ss(kem_encaps(kem_pk(SK_SMDP_KEM))),tidMain[])))).
+
+40. The message (devMain[],tidMain[],get_ct(kem_encaps(kem_pk(SK_EUICC_KEM[]))),auth_mac(mk_prepare_data(tidMain[]),kdf_bind(get_ss(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tidMain[]))) that may be sent on channel LPA2SMDP[] by 36 may be received at input {51}.
+The message (devMain[],tidMain[],kem_pk(SK_EU_PROFILE_1),get_ct(kem_encaps(kem_pk(SK_SMDP_KEM))),auth_mac(mk_prepare_response(tidMain[],kem_pk(SK_EU_PROFILE_1)),kdf_bind(get_ss(kem_encaps(kem_pk(SK_SMDP_KEM))),tidMain[]))) that may be sent on channel LPA2EUICC[] by 39 may be received at input {55}.
+So the message (devMain[],tidMain[],kem_pk(SK_EU_PROFILE_1),get_ct(kem_encaps(kem_pk(SK_SMDP_KEM))),auth_mac(mk_prepare_response(tidMain[],kem_pk(SK_EU_PROFILE_1)),kdf_bind(get_ss(kem_encaps(kem_pk(SK_SMDP_KEM))),tidMain[]))) may be sent on channel LPA2SMDP[] at output {58}.
+mess(LPA2SMDP[],(devMain[],tidMain[],kem_pk(SK_EU_PROFILE_1),get_ct(kem_encaps(kem_pk(SK_SMDP_KEM))),auth_mac(mk_prepare_response(tidMain[],kem_pk(SK_EU_PROFILE_1)),kdf_bind(get_ss(kem_encaps(kem_pk(SK_SMDP_KEM))),tidMain[])))).
+
+41. The message (devMain[],tidMain[],kem_pk(SK_EU_PROFILE_1),get_ct(kem_encaps(kem_pk(SK_SMDP_KEM))),auth_mac(mk_prepare_response(tidMain[],kem_pk(SK_EU_PROFILE_1)),kdf_bind(get_ss(kem_encaps(kem_pk(SK_SMDP_KEM))),tidMain[]))) that may be sent on channel LPA2SMDP[] by 40 may be received at input {18}.
+So the message (devMain[],tidMain[],mk_bpp_body(tidMain[],kem_pk(SK_EU_PROFILE_1),get_ct(kem_encaps(kem_pk(SK_EU_PROFILE_1))),senc(secret_profile[],kdf_enc(get_ss(kem_encaps(kem_pk(SK_EU_PROFILE_1)))))),profile_mac(mk_bpp_body(tidMain[],kem_pk(SK_EU_PROFILE_1),get_ct(kem_encaps(kem_pk(SK_EU_PROFILE_1))),senc(secret_profile[],kdf_enc(get_ss(kem_encaps(kem_pk(SK_EU_PROFILE_1)))))),kdf_mac(get_ss(kem_encaps(kem_pk(SK_EU_PROFILE_1))))),get_ct(kem_encaps(kem_pk(SK_EU_PROFILE_1))),get_ct(kem_encaps(kem_pk(SK_EUICC_KEM[]))),auth_mac(mk_bpp_body(tidMain[],kem_pk(SK_EU_PROFILE_1),get_ct(kem_encaps(kem_pk(SK_EU_PROFILE_1))),senc(secret_profile[],kdf_enc(get_ss(kem_encaps(kem_pk(SK_EU_PROFILE_1)))))),kdf_bind(get_ss(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tidMain[]))) may be sent on channel LPA2SMDP[] at output {40}.
+mess(LPA2SMDP[],(devMain[],tidMain[],mk_bpp_body(tidMain[],kem_pk(SK_EU_PROFILE_1),get_ct(kem_encaps(kem_pk(SK_EU_PROFILE_1))),senc(secret_profile[],kdf_enc(get_ss(kem_encaps(kem_pk(SK_EU_PROFILE_1)))))),profile_mac(mk_bpp_body(tidMain[],kem_pk(SK_EU_PROFILE_1),get_ct(kem_encaps(kem_pk(SK_EU_PROFILE_1))),senc(secret_profile[],kdf_enc(get_ss(kem_encaps(kem_pk(SK_EU_PROFILE_1)))))),kdf_mac(get_ss(kem_encaps(kem_pk(SK_EU_PROFILE_1))))),get_ct(kem_encaps(kem_pk(SK_EU_PROFILE_1))),get_ct(kem_encaps(kem_pk(SK_EUICC_KEM[]))),auth_mac(mk_bpp_body(tidMain[],kem_pk(SK_EU_PROFILE_1),get_ct(kem_encaps(kem_pk(SK_EU_PROFILE_1))),senc(secret_profile[],kdf_enc(get_ss(kem_encaps(kem_pk(SK_EU_PROFILE_1)))))),kdf_bind(get_ss(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tidMain[])))).
+
+42. The message (devMain[],tidMain[],get_ct(kem_encaps(kem_pk(SK_EUICC_KEM[]))),auth_mac(mk_prepare_data(tidMain[]),kdf_bind(get_ss(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tidMain[]))) that may be sent on channel LPA2SMDP[] by 32 may be received at input {51}.
+The message (devMain[],tidMain[],kem_pk(SK_EU_PROFILE_4),get_ct(kem_encaps(kem_pk(SK_SMDP_KEM))),auth_mac(mk_prepare_response(tidMain[],kem_pk(SK_EU_PROFILE_4)),kdf_bind(get_ss(kem_encaps(kem_pk(SK_SMDP_KEM))),tidMain[]))) that may be sent on channel LPA2EUICC[] by 35 may be received at input {55}.
+The message (devMain[],tidMain[],mk_bpp_body(tidMain[],kem_pk(SK_EU_PROFILE_1),get_ct(kem_encaps(kem_pk(SK_EU_PROFILE_1))),senc(secret_profile[],kdf_enc(get_ss(kem_encaps(kem_pk(SK_EU_PROFILE_1)))))),profile_mac(mk_bpp_body(tidMain[],kem_pk(SK_EU_PROFILE_1),get_ct(kem_encaps(kem_pk(SK_EU_PROFILE_1))),senc(secret_profile[],kdf_enc(get_ss(kem_encaps(kem_pk(SK_EU_PROFILE_1)))))),kdf_mac(get_ss(kem_encaps(kem_pk(SK_EU_PROFILE_1))))),get_ct(kem_encaps(kem_pk(SK_EU_PROFILE_1))),get_ct(kem_encaps(kem_pk(SK_EUICC_KEM[]))),auth_mac(mk_bpp_body(tidMain[],kem_pk(SK_EU_PROFILE_1),get_ct(kem_encaps(kem_pk(SK_EU_PROFILE_1))),senc(secret_profile[],kdf_enc(get_ss(kem_encaps(kem_pk(SK_EU_PROFILE_1)))))),kdf_bind(get_ss(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tidMain[]))) that may be sent on channel LPA2SMDP[] by 41 may be received at input {59}.
+So the message (t_loadBPP,devMain[],tidMain[],mk_bpp_body(tidMain[],kem_pk(SK_EU_PROFILE_1),get_ct(kem_encaps(kem_pk(SK_EU_PROFILE_1))),senc(secret_profile[],kdf_enc(get_ss(kem_encaps(kem_pk(SK_EU_PROFILE_1)))))),profile_mac(mk_bpp_body(tidMain[],kem_pk(SK_EU_PROFILE_1),get_ct(kem_encaps(kem_pk(SK_EU_PROFILE_1))),senc(secret_profile[],kdf_enc(get_ss(kem_encaps(kem_pk(SK_EU_PROFILE_1)))))),kdf_mac(get_ss(kem_encaps(kem_pk(SK_EU_PROFILE_1))))),get_ct(kem_encaps(kem_pk(SK_EU_PROFILE_1))),get_ct(kem_encaps(kem_pk(SK_EUICC_KEM[]))),auth_mac(mk_bpp_body(tidMain[],kem_pk(SK_EU_PROFILE_1),get_ct(kem_encaps(kem_pk(SK_EU_PROFILE_1))),senc(secret_profile[],kdf_enc(get_ss(kem_encaps(kem_pk(SK_EU_PROFILE_1)))))),kdf_bind(get_ss(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tidMain[]))) may be sent on channel LPA2EUICC[] at output {62}.
+mess(LPA2EUICC[],(t_loadBPP,devMain[],tidMain[],mk_bpp_body(tidMain[],kem_pk(SK_EU_PROFILE_1),get_ct(kem_encaps(kem_pk(SK_EU_PROFILE_1))),senc(secret_profile[],kdf_enc(get_ss(kem_encaps(kem_pk(SK_EU_PROFILE_1)))))),profile_mac(mk_bpp_body(tidMain[],kem_pk(SK_EU_PROFILE_1),get_ct(kem_encaps(kem_pk(SK_EU_PROFILE_1))),senc(secret_profile[],kdf_enc(get_ss(kem_encaps(kem_pk(SK_EU_PROFILE_1)))))),kdf_mac(get_ss(kem_encaps(kem_pk(SK_EU_PROFILE_1))))),get_ct(kem_encaps(kem_pk(SK_EU_PROFILE_1))),get_ct(kem_encaps(kem_pk(SK_EUICC_KEM[]))),auth_mac(mk_bpp_body(tidMain[],kem_pk(SK_EU_PROFILE_1),get_ct(kem_encaps(kem_pk(SK_EU_PROFILE_1))),senc(secret_profile[],kdf_enc(get_ss(kem_encaps(kem_pk(SK_EU_PROFILE_1)))))),kdf_bind(get_ss(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tidMain[])))).
+
+43. The message (t_prepDownload,devMain[],tidMain[],get_ct(kem_encaps(kem_pk(SK_EUICC_KEM[]))),auth_mac(mk_prepare_data(tidMain[]),kdf_bind(get_ss(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tidMain[]))) that may be sent on channel LPA2EUICC[] by 31 may be received at input {71}.
+The message (t_loadBPP,devMain[],tidMain[],mk_bpp_body(tidMain[],kem_pk(SK_EU_PROFILE_1),get_ct(kem_encaps(kem_pk(SK_EU_PROFILE_1))),senc(secret_profile[],kdf_enc(get_ss(kem_encaps(kem_pk(SK_EU_PROFILE_1)))))),profile_mac(mk_bpp_body(tidMain[],kem_pk(SK_EU_PROFILE_1),get_ct(kem_encaps(kem_pk(SK_EU_PROFILE_1))),senc(secret_profile[],kdf_enc(get_ss(kem_encaps(kem_pk(SK_EU_PROFILE_1)))))),kdf_mac(get_ss(kem_encaps(kem_pk(SK_EU_PROFILE_1))))),get_ct(kem_encaps(kem_pk(SK_EU_PROFILE_1))),get_ct(kem_encaps(kem_pk(SK_EUICC_KEM[]))),auth_mac(mk_bpp_body(tidMain[],kem_pk(SK_EU_PROFILE_1),get_ct(kem_encaps(kem_pk(SK_EU_PROFILE_1))),senc(secret_profile[],kdf_enc(get_ss(kem_encaps(kem_pk(SK_EU_PROFILE_1)))))),kdf_bind(get_ss(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tidMain[]))) that may be sent on channel LPA2EUICC[] by 42 may be received at input {87}.
+The event EUICC_PROFILE_INSTALLED(devMain[],tidMain[],secret_profile[],iccid_3) (with occurrence name @occ101_2) may be executed at {101}.
+So the message (devMain[],tidMain[],iccid_3,get_ct(kem_encaps(kem_pk(SK_SMDP_KEM))),auth_mac(mk_install_result(tidMain[],iccid_3),kdf_bind_install(get_ss(kem_encaps(kem_pk(SK_SMDP_KEM))),tidMain[],iccid_3))) may be sent on channel LPA2EUICC[] at output {107}.
+mess(LPA2EUICC[],(devMain[],tidMain[],iccid_3,get_ct(kem_encaps(kem_pk(SK_SMDP_KEM))),auth_mac(mk_install_result(tidMain[],iccid_3),kdf_bind_install(get_ss(kem_encaps(kem_pk(SK_SMDP_KEM))),tidMain[],iccid_3)))).
+
+44. The message (devMain[],tidMain[],get_ct(kem_encaps(kem_pk(SK_EUICC_KEM[]))),auth_mac(mk_prepare_data(tidMain[]),kdf_bind(get_ss(kem_encaps(kem_pk(SK_EUICC_KEM[]))),tidMain[]))) that may be sent on channel LPA2SMDP[] by 29 may be received at input {51}.
+The message (devMain[],tidMain[],iccid_3,get_ct(kem_encaps(kem_pk(SK_SMDP_KEM))),auth_mac(mk_install_result(tidMain[],iccid_3),kdf_bind_install(get_ss(kem_encaps(kem_pk(SK_SMDP_KEM))),tidMain[],iccid_3))) that may be sent on channel LPA2EUICC[] by 43 may be received at input {55}.
+So the message (devMain[],tidMain[],iccid_3,get_ct(kem_encaps(kem_pk(SK_SMDP_KEM))),auth_mac(mk_install_result(tidMain[],iccid_3),kdf_bind_install(get_ss(kem_encaps(kem_pk(SK_SMDP_KEM))),tidMain[],iccid_3))) may be sent on channel LPA2SMDP[] at output {58}.
+mess(LPA2SMDP[],(devMain[],tidMain[],iccid_3,get_ct(kem_encaps(kem_pk(SK_SMDP_KEM))),auth_mac(mk_install_result(tidMain[],iccid_3),kdf_bind_install(get_ss(kem_encaps(kem_pk(SK_SMDP_KEM))),tidMain[],iccid_3)))).
+
+45. The message (devMain[],tidMain[],kem_pk(SK_EU_PROFILE_2),get_ct(kem_encaps(kem_pk(SK_SMDP_KEM))),auth_mac(mk_prepare_response(tidMain[],kem_pk(SK_EU_PROFILE_2)),kdf_bind(get_ss(kem_encaps(kem_pk(SK_SMDP_KEM))),tidMain[]))) that may be sent on channel LPA2SMDP[] by 28 may be received at input {18}.
+The message (devMain[],tidMain[],iccid_3,get_ct(kem_encaps(kem_pk(SK_SMDP_KEM))),auth_mac(mk_install_result(tidMain[],iccid_3),kdf_bind_install(get_ss(kem_encaps(kem_pk(SK_SMDP_KEM))),tidMain[],iccid_3))) that may be sent on channel LPA2SMDP[] by 44 may be received at input {41}.
+So event SMDP_INSTALL_CONFIRMED(devMain[],tidMain[],iccid_3) may be executed at {47} in session @sid_2.
+inj-event(SMDP_INSTALL_CONFIRMED(devMain[],tidMain[],iccid_3),@occ47_1).
+
+46. By 45, inj-event(SMDP_INSTALL_CONFIRMED(devMain[],tidMain[],iccid_3),@occ47_1).
+The goal is reached, represented in the following fact:
+inj-event(SMDP_INSTALL_CONFIRMED(devMain[],tidMain[],iccid_3),@occ47_1).
+
+47. By 46, inj-event(SMDP_INSTALL_CONFIRMED(devMain[],tidMain[],iccid_3),@occ47_1).
+By 23, inj-event(SMDP_INSTALL_CONFIRMED(devMain[],tidMain[],iccid_3),@occ47_2).
+We have @occ47_1 ≠ @occ47_2.
+The goals for injectivity are reached, combined in the following fact:
+inj-event(SMDP_INSTALL_CONFIRMED(devMain[],tidMain[],iccid_3),@occ47_1) && inj-event(SMDP_INSTALL_CONFIRMED(devMain[],tidMain[],iccid_3),@occ47_2).
+
+
+RESULT inj-event(SMDP_INSTALL_CONFIRMED(dev_3,tid_3,iccid_3)) ==> inj-event(EUICC_PROFILE_INSTALLED(dev_3,tid_3,profile_2,iccid_3)) cannot be proved.
+RESULT (but event(SMDP_INSTALL_CONFIRMED(dev_3,tid_3,iccid_3)) ==> event(EUICC_PROFILE_INSTALLED(dev_3,tid_3,profile_2,iccid_3)) is true.)
+
+--------------------------------------------------------------
+Verification summary:
+
+Query not attacker_p1(secret_profile[]) is true.
+
+Query not attacker_p1(secret_profile[]) is true.
+
+Query inj-event(EUICC_PROFILE_INSTALLED(dev_3,tid_3,profile_2,iccid_3)) ==> inj-event(SMDP_BOUND_PROFILE(dev_3,tid_3,profile_2)) is true.
+
+Query inj-event(SMDP_INSTALL_CONFIRMED(dev_3,tid_3,iccid_3)) ==> inj-event(EUICC_PROFILE_INSTALLED(dev_3,tid_3,profile_2,iccid_3)) cannot be proved.
+
+--------------------------------------------------------------

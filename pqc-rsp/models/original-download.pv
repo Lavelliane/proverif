@@ -1,0 +1,356 @@
+(* =============================================================================
+   SGP.22 RSP Protocol - PHASE B ONLY: Profile Download
+   
+   Phase B: Profile Download & Installation (with ephemeral DH for PFS)
+   Assumes Phase A authentication already completed
+   ============================================================================= *)
+
+(* ProVerif settings for termination *)
+set reconstructTrace = false.
+
+(* ===== CHANNELS ===== *)
+free c         : channel.           (* Public channel: certs, meta *)
+free LPA2EUICC : channel [private]. (* Local LPA ↔ eUICC interface *)
+free LPA2SMDP  : channel [private]. (* HTTPS/TLS-abstracted channel *)
+
+
+(* ===== DATA TYPES ===== *)
+type Id_t.          (* Entity identifier *)
+type Tid_t.         (* TransactionID *)
+type K_t.           (* Long-term signing keys *)
+type DHKey_t.       (* Ephemeral DH keys *)
+type SharedSecret_t.(* DH shared secret *)
+type SymKey_t.      (* Symmetric keys for encryption/MAC *)
+type Sig_t.         (* Digital signatures *)
+type Cert_t.        (* Certificates *)
+type Tag_t.         (* Roles / message tags *)
+type Profile_t.     (* eSIM Profile *)
+type ICCID_t.       (* Profile identifier *)
+type MAC_t.         (* Message authentication code *)
+
+
+(* ===== CONSTANTS ===== *)
+const ID_SMDP   : Id_t.
+const ID_LPA    : Id_t.
+const ID_EUICC  : Id_t.
+
+const tag_ci    : Tag_t.
+const tag_dp    : Tag_t.
+const tag_eu    : Tag_t.
+
+const t_prepDownload : Tag_t.
+const t_loadBPP      : Tag_t.
+
+const SK_CI     : K_t [private].
+const SK_DPauth : K_t [private].
+
+
+(* ===== CRYPTO PRIMITIVES ===== *)
+
+fun pk(K_t) : K_t.
+
+fun signcert(Id_t, K_t, Tag_t, K_t) : Cert_t.
+reduc forall id:Id_t, Pk:K_t, role:Tag_t, Sk:K_t;
+  checkcert(signcert(id, Pk, role, Sk), pk(Sk)) = (id, Pk, role).
+
+letfun certificate(id:Id_t, Pk:K_t, role:Tag_t) =
+  signcert(id, Pk, role, SK_CI).
+
+fun sign(bitstring, K_t) : Sig_t.
+reduc forall m:bitstring, Sk:K_t;
+  checksign(sign(m, Sk), pk(Sk)) = m.
+
+(* --- Ephemeral Diffie-Hellman --- *)
+fun dh_pk(DHKey_t) : DHKey_t.
+fun dh(DHKey_t, DHKey_t) : SharedSecret_t.
+equation forall x:DHKey_t, y:DHKey_t;
+  dh(x, dh_pk(y)) = dh(y, dh_pk(x)).
+
+(* --- Key Derivation --- *)
+fun kdf_enc(SharedSecret_t) : SymKey_t.
+fun kdf_mac(SharedSecret_t) : SymKey_t.
+
+(* --- Symmetric Encryption --- *)
+fun senc(Profile_t, SymKey_t) : bitstring.
+reduc forall p:Profile_t, k:SymKey_t;
+  sdec(senc(p, k), k) = p.
+
+(* --- MAC --- *)
+fun mac(bitstring, SymKey_t) : MAC_t.
+reduc forall m:bitstring, k:SymKey_t;
+  verify_mac(mac(m, k), m, k) = true.
+
+(* --- Message Constructors --- *)
+fun mk_serverSigned2(Tid_t) : bitstring [data].
+fun mk_clientSigned2(Tid_t, DHKey_t) : bitstring [data].
+fun mk_serverSigned3(Tid_t, DHKey_t) : bitstring [data].
+fun mk_bpp_body(Tid_t, DHKey_t, DHKey_t, bitstring) : bitstring [data].
+fun mk_install_result(Tid_t, ICCID_t) : bitstring [data].
+
+
+(* ===== EVENTS ===== *)
+
+(* --- Phase B: Profile Download --- *)
+event SMDP_PREPARE_DOWNLOAD(Id_t, Tid_t).
+event EUICC_PREPARE_DOWNLOAD_OK(Id_t, Tid_t, DHKey_t).
+event SMDP_BOUND_PROFILE(Id_t, Tid_t, Profile_t).
+event EUICC_PROFILE_INSTALLED(Id_t, Tid_t, Profile_t, ICCID_t).
+event SMDP_INSTALL_CONFIRMED(Id_t, Tid_t, ICCID_t).
+
+event EUICC_DH_COMPLETE(Id_t, Tid_t, DHKey_t, DHKey_t).
+event SMDP_DH_COMPLETE(Id_t, Tid_t, DHKey_t, DHKey_t).
+
+
+(* ===== QUERIES ===== *)
+
+(* --- CRITICAL PROPERTIES --- *)
+
+(* #13: Profile Data Confidentiality - attacker cannot learn profile *)
+free secret_profile : Profile_t [private].
+query attacker(secret_profile).
+
+(* #14: Forward Secrecy - profile remains secret after long-term key compromise *)
+query attacker(secret_profile) phase 1.
+
+(* --- IMPORTANT PROPERTIES --- *)
+
+(* #10: Injective Agreement - Profile installation authenticity *)
+query dev:Id_t, tid:Tid_t, profile:Profile_t, iccid:ICCID_t;
+  inj-event(EUICC_PROFILE_INSTALLED(dev, tid, profile, iccid)) ==> 
+    inj-event(SMDP_BOUND_PROFILE(dev, tid, profile)).
+
+(* #10: Injective Agreement - Installation confirmation authenticity *)
+query dev:Id_t, tid:Tid_t, profile:Profile_t, iccid:ICCID_t;
+  inj-event(SMDP_INSTALL_CONFIRMED(dev, tid, iccid)) ==> 
+    inj-event(EUICC_PROFILE_INSTALLED(dev, tid, profile, iccid)).
+
+
+(* =============================================================================
+   eUICC Process - Phase B Only
+   ============================================================================= *)
+
+let EUICC(PK_CI:K_t, dev:Id_t, tidU:Tid_t, PK_DPauth:K_t, SK_EUICC:K_t) =
+  let PK_EUICC   = pk(SK_EUICC) in
+  let Cert_EUICC = certificate(ID_EUICC, PK_EUICC, tag_eu) in
+
+  (
+    (* ===================== PHASE B: Profile Download ===================== *)
+
+    (* (14) PrepareDownload from LPA *)
+    in(LPA2EUICC,
+       (=t_prepDownload,
+        dev_pd       : Id_t,
+        tid_pd       : Tid_t,
+        serverSig2   : Sig_t));
+    if dev_pd = dev then
+    if tid_pd = tidU then
+
+    (* (15a) Verify serverSignature2 *)
+    let decoded_srv2:bitstring = checksign(serverSig2, PK_DPauth) in
+    let mk_serverSigned2(tid_check:Tid_t) = decoded_srv2 in
+    if tid_check = tidU then
+
+    (* (15b) Generate ephemeral DH keypair *)
+    new sk_eu_eph : DHKey_t;
+    let pk_eu_eph = dh_pk(sk_eu_eph) in
+
+    event EUICC_PREPARE_DOWNLOAD_OK(dev, tidU, pk_eu_eph);
+
+    (* (15c) Create eUICCSignature2 *)
+    let clientSigned2 = mk_clientSigned2(tidU, pk_eu_eph) in
+    let clientSig2    = sign(clientSigned2, SK_EUICC) in
+
+    (* (16) PrepareDownloadResponse to LPA *)
+    out(LPA2EUICC, (dev, pk_eu_eph, clientSig2));
+
+    (* (20) LoadBoundProfilePackage from LPA *)
+    in(LPA2EUICC,
+       (=t_loadBPP,
+        dev_bpp      : Id_t,
+        bpp_body     : bitstring,
+        bpp_mac      : MAC_t,
+        serverSig3   : Sig_t));
+    if dev_bpp = dev then
+
+    (* (21a) Verify serverSignature3 - extract SM-DP+ ephemeral PK *)
+    let decoded_srv3:bitstring = checksign(serverSig3, PK_DPauth) in
+    let mk_serverSigned3(tid_bpp:Tid_t, pk_dp_eph:DHKey_t) = decoded_srv3 in
+    if tid_bpp = tidU then
+
+    (* (21b) Compute shared secret via DH *)
+    let shs = dh(sk_eu_eph, pk_dp_eph) in
+
+    (* (21c) Derive keys *)
+    let k_enc = kdf_enc(shs) in
+    let k_mac = kdf_mac(shs) in
+    event EUICC_DH_COMPLETE(dev, tidU, pk_eu_eph, pk_dp_eph);
+
+    (* (21d) Verify MAC *)
+    let mk_bpp_body(=tidU, =pk_eu_eph, =pk_dp_eph, encrypted_profile:bitstring) = bpp_body in
+    if verify_mac(bpp_mac, bpp_body, k_mac) = true then
+
+    (* (21e) Decrypt profile *)
+    let profile = sdec(encrypted_profile, k_enc) in
+
+    (* (21f) Install profile, generate ICCID *)
+    new iccid : ICCID_t;
+    event EUICC_PROFILE_INSTALLED(dev, tidU, profile, iccid);
+
+    (* (22) ProfileInstallationResult *)
+    let installResult = mk_install_result(tidU, iccid) in
+    let installSig    = sign(installResult, SK_EUICC) in
+    out(LPA2EUICC, (dev, tidU, iccid, installSig))
+  ).
+
+
+
+(* =============================================================================
+   SM-DP+ Process - Phase B Only
+   ============================================================================= *)
+
+let SMDP(PK_CI:K_t, dev:Id_t, tid:Tid_t, PK_EUICC:K_t, profile:Profile_t) =
+  let PK_DPauth   = pk(SK_DPauth) in
+  let Cert_DPauth = certificate(ID_SMDP, PK_DPauth, tag_dp) in
+
+  (
+    (* ===================== PHASE B: Profile Download ===================== *)
+
+    (* (12) Create serverSignature2 for PrepareDownload *)
+    let serverSigned2 = mk_serverSigned2(tid) in
+    let serverSig2    = sign(serverSigned2, SK_DPauth) in
+
+    event SMDP_PREPARE_DOWNLOAD(dev, tid);
+
+    (* (14) Send PrepareDownload to LPA *)
+    out(LPA2SMDP, (dev, tid, serverSig2));
+
+    (* (17) GetBoundProfilePackage - receive eUICC ephemeral PK *)
+    in(LPA2SMDP,
+       (devS3       : Id_t,
+        pk_eu_eph   : DHKey_t,
+        clientSig2  : Sig_t));
+    if devS3 = dev then
+
+    (* Verify eUICCSignature2 *)
+    let decoded_cli2:bitstring = checksign(clientSig2, PK_EUICC) in
+    let mk_clientSigned2(tid3:Tid_t, pk_check:DHKey_t) = decoded_cli2 in
+    if tid3     = tid then
+    if pk_check = pk_eu_eph then
+
+    (* (18b) Generate ephemeral DH keypair *)
+    new sk_dp_eph : DHKey_t;
+    let pk_dp_eph = dh_pk(sk_dp_eph) in
+
+    (* (18c) Compute shared secret *)
+    let shs = dh(sk_dp_eph, pk_eu_eph) in
+
+    (* (18d) Derive keys *)
+    let k_enc = kdf_enc(shs) in
+    let k_mac = kdf_mac(shs) in
+    event SMDP_DH_COMPLETE(dev, tid, pk_eu_eph, pk_dp_eph);
+
+    (* (18e) Encrypt profile *)
+    let encrypted_profile = senc(profile, k_enc) in
+
+    (* (18f) Create BPP body *)
+    let bpp_body = mk_bpp_body(tid, pk_eu_eph, pk_dp_eph, encrypted_profile) in
+
+    (* (18g) Compute MAC *)
+    let bpp_mac = mac(bpp_body, k_mac) in
+
+    (* (18h) Create serverSignature3 *)
+    let serverSigned3 = mk_serverSigned3(tid, pk_dp_eph) in
+    let serverSig3    = sign(serverSigned3, SK_DPauth) in
+
+    event SMDP_BOUND_PROFILE(dev, tid, profile);
+
+    (* (20) Send LoadBoundProfilePackage to LPA *)
+    out(LPA2SMDP, (dev, bpp_body, bpp_mac, serverSig3));
+
+    (* (23) HandleNotification - receive installation result *)
+    in(LPA2SMDP,
+       (devS4       : Id_t,
+        tid_result  : Tid_t,
+        iccid       : ICCID_t,
+        installSig  : Sig_t));
+    if devS4      = dev then
+    if tid_result = tid then
+
+    (* Verify installation signature *)
+    let decoded_result:bitstring = checksign(installSig, PK_EUICC) in
+    let mk_install_result(tid_check:Tid_t, iccid_check:ICCID_t) = decoded_result in
+    if tid_check   = tid then
+    if iccid_check = iccid then
+
+    event SMDP_INSTALL_CONFIRMED(dev, tid, iccid)
+  ).
+
+
+
+(* =============================================================================
+   LPA Process - Honest Relay (Phase B Only)
+   ============================================================================= *)
+
+let LPA(dev:Id_t, tid:Tid_t) =
+  (
+    (* ===================== PHASE B: Profile Download ===================== *)
+
+    (* (14) Receive PrepareDownload from SM-DP+ *)
+    in(LPA2SMDP, (dev4:Id_t, tid4:Tid_t, serverSig2:Sig_t));
+    if dev4 = dev then
+    if tid4 = tid then
+
+    (* Forward to eUICC *)
+    out(LPA2EUICC, (t_prepDownload, dev, tid, serverSig2));
+
+    (* (16) Receive PrepareDownloadResponse from eUICC *)
+    in(LPA2EUICC, (dev5:Id_t, pk_eu_eph:DHKey_t, clientSig2:Sig_t));
+    if dev5 = dev then
+
+    (* (17) Forward to SM-DP+ as GetBoundProfilePackage *)
+    out(LPA2SMDP, (dev, pk_eu_eph, clientSig2));
+
+    (* (19) Receive BoundProfilePackage from SM-DP+ *)
+    in(LPA2SMDP, (dev6:Id_t, bpp_body:bitstring, bpp_mac:MAC_t, serverSig3:Sig_t));
+    if dev6 = dev then
+
+    (* (20) Forward to eUICC as LoadBoundProfilePackage *)
+    out(LPA2EUICC, (t_loadBPP, dev, bpp_body, bpp_mac, serverSig3));
+
+    (* (22) Receive ProfileInstallationResult from eUICC *)
+    in(LPA2EUICC, (dev7:Id_t, tid_result:Tid_t, iccid:ICCID_t, installSig:Sig_t));
+    if dev7 = dev then
+
+    (* (23) Forward to SM-DP+ as HandleNotification *)
+    out(LPA2SMDP, (dev, tid_result, iccid, installSig))
+  ).
+
+
+
+(* =============================================================================
+   MAIN PROCESS
+   ============================================================================= *)
+
+process
+  let PK_CI = pk(SK_CI) in
+  out(c, PK_CI);
+
+  new devMain : Id_t;
+  new tidMain : Tid_t;
+  
+  (* Setup keys (simulating Phase A results) *)
+  new SK_EUICC : K_t;
+  let PK_EUICC = pk(SK_EUICC) in
+  let PK_DPauth = pk(SK_DPauth) in
+
+  (
+    ( !SMDP(PK_CI, devMain, tidMain, PK_EUICC, secret_profile)
+    | !LPA(devMain, tidMain)
+    | !EUICC(PK_CI, devMain, tidMain, PK_DPauth, SK_EUICC)
+    )
+    
+    (* === Forward Secrecy Test === *)
+  | ( phase 1;
+      out(c, SK_DPauth)
+    )
+  )

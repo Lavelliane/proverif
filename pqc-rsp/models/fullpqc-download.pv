@@ -1,0 +1,371 @@
+(* =====================================================================
+   SGP.22 Consumer eSIM Provisioning - PHASE B ONLY: Profile Download
+   
+   FULL PQC STACK:
+   - Certificate chain: PQ signatures (Dilithium) throughout
+   - Application layer: KEM-based authentication (Option 1 from spec)
+   
+   Phase B: Profile Download & Installation (Full KEM-based authentication)
+   Assumes Phase A authentication already completed
+   ===================================================================== *)
+
+(* ProVerif settings for termination *)
+set reconstructTrace = false.
+
+(* ===== CHANNELS ===== *)
+free c         : channel.           (* Public channel: certificates only *)
+free LPA2EUICC : channel [private]. (* Local LPA ↔ eUICC interface *)
+free LPA2SMDP  : channel [private]. (* TLS-secured LPA ↔ SM-DP+ channel *)
+
+
+(* ===== DATA TYPES ===== *)
+type Id_t.      (* Entity identifier *)
+type Tid_t.     (* TransactionID *)
+type Tag_t.     (* Role tags *)
+
+(* KEM key types *)
+type KEMsk_t.   (* KEM secret key *)
+type KEMpk_t.   (* KEM public key *)
+type KEMct_t.   (* KEM ciphertext *)
+type KEMss_t.   (* KEM shared secret *)
+
+(* Phase B: Profile Download types *)
+type SymKey_t.      (* Symmetric keys for profile encryption *)
+type Profile_t.     (* eSIM Profile *)
+type ICCID_t.       (* Profile identifier *)
+type MAC_t.         (* Message authentication code *)
+type BindKey_t.     (* Binding key for KEM-based auth *)
+
+
+(* ===== CONSTANTS ===== *)
+const ID_SMDP   : Id_t.
+const ID_EUICC  : Id_t.
+
+const t_prepDownload : Tag_t.
+const t_loadBPP      : Tag_t.
+
+(* SM-DP+ static KEM private key *)
+const SK_SMDP_KEM : KEMsk_t [private].
+
+
+(* ===== CRYPTO: ML-KEM ===== *)
+fun kem_pk(KEMsk_t) : KEMpk_t.
+fun kem_encaps(KEMpk_t) : bitstring.
+fun get_ct(bitstring) : KEMct_t [data].
+fun get_ss(bitstring) : KEMss_t [data].
+
+reduc forall sk: KEMsk_t;
+  kem_decaps(get_ct(kem_encaps(kem_pk(sk))), sk) = 
+    get_ss(kem_encaps(kem_pk(sk))).
+
+
+(* ===== KEY DERIVATION ===== *)
+(* Phase B: Profile encryption key derivation from KEM shared secret *)
+fun kdf_enc(KEMss_t) : SymKey_t.
+fun kdf_mac(KEMss_t) : SymKey_t.
+
+(* Phase B: KEM-based authentication binding key derivation *)
+fun kdf_bind(KEMss_t, Tid_t) : BindKey_t.
+fun kdf_bind_install(KEMss_t, Tid_t, ICCID_t) : BindKey_t.
+
+
+(* ===== SYMMETRIC ENCRYPTION (for Profile) ===== *)
+fun senc(Profile_t, SymKey_t) : bitstring.
+reduc forall p:Profile_t, k:SymKey_t;
+  sdec(senc(p, k), k) = p.
+
+
+(* ===== MAC FUNCTIONS ===== *)
+(* Phase B: Profile package MAC *)
+fun profile_mac(bitstring, SymKey_t) : MAC_t.
+reduc forall m:bitstring, k:SymKey_t;
+  verify_profile_mac(profile_mac(m, k), m, k) = true.
+
+(* Phase B: KEM-based authentication MAC *)
+fun auth_mac(bitstring, BindKey_t) : MAC_t.
+reduc forall m:bitstring, k:BindKey_t;
+  verify_auth_mac(auth_mac(m, k), m, k) = true.
+
+
+(* ===== MESSAGE CONSTRUCTORS ===== *)
+fun mk_prepare_data(Tid_t) : bitstring [data].
+fun mk_prepare_response(Tid_t, KEMpk_t) : bitstring [data].
+fun mk_bpp_body(Tid_t, KEMpk_t, KEMct_t, bitstring) : bitstring [data].
+fun mk_install_result(Tid_t, ICCID_t) : bitstring [data].
+
+
+(* ===== EVENTS ===== *)
+
+(* Phase B: Profile Download (KEM-based) *)
+event SMDP_PREPARE_DOWNLOAD(Id_t, Tid_t, KEMct_t).
+event EUICC_VERIFIED_PREPARE(Id_t, Tid_t).
+event EUICC_PREPARE_DOWNLOAD_OK(Id_t, Tid_t, KEMpk_t, KEMct_t).
+event SMDP_VERIFIED_PREPARE_RESPONSE(Id_t, Tid_t, KEMpk_t).
+event SMDP_BOUND_PROFILE(Id_t, Tid_t, Profile_t).
+event EUICC_PROFILE_INSTALLED(Id_t, Tid_t, Profile_t, ICCID_t).
+event SMDP_INSTALL_CONFIRMED(Id_t, Tid_t, ICCID_t).
+
+event EUICC_KEM_COMPLETE(Id_t, Tid_t, KEMpk_t, KEMct_t).
+event SMDP_KEM_COMPLETE(Id_t, Tid_t, KEMpk_t, KEMct_t).
+
+
+(* ===== QUERIES ===== *)
+
+(* --- CRITICAL PROPERTIES --- *)
+
+(* #13: Profile Data Confidentiality - attacker cannot learn profile *)
+free secret_profile : Profile_t [private].
+query attacker(secret_profile).
+
+(* #14: Forward Secrecy - profile remains secret after long-term key compromise *)
+query attacker(secret_profile) phase 1.
+
+(* --- IMPORTANT PROPERTIES --- *)
+
+(* #10: Injective Agreement - Profile installation authenticity *)
+query dev:Id_t, tid:Tid_t, profile:Profile_t, iccid:ICCID_t;
+  inj-event(EUICC_PROFILE_INSTALLED(dev, tid, profile, iccid)) ==> 
+    inj-event(SMDP_BOUND_PROFILE(dev, tid, profile)).
+
+(* #10: Injective Agreement - Installation confirmation authenticity *)
+query dev:Id_t, tid:Tid_t, profile:Profile_t, iccid:ICCID_t;
+  inj-event(SMDP_INSTALL_CONFIRMED(dev, tid, iccid)) ==> 
+    inj-event(EUICC_PROFILE_INSTALLED(dev, tid, profile, iccid)).
+
+
+(* =====================================================================
+   eUICC PROCESS - Phase B Only
+   ===================================================================== *)
+let EUICC(dev:Id_t, tid:Tid_t, PK_SMDP_KEM:KEMpk_t, SK_EUICC_KEM:KEMsk_t) =
+  (
+    (* Step 14: Receive PrepareDownload with KEM ciphertext *)
+    in(LPA2EUICC,
+       (=t_prepDownload,
+        dev_pd       : Id_t,
+        tid_pd       : Tid_t,
+        CT_PREPARE   : KEMct_t,
+        prepare_mac  : MAC_t));
+    if dev_pd = dev then
+    if tid_pd = tid then
+
+    (* KEM-based authentication: Decapsulate and verify *)
+    let SS_PREPARE = kem_decaps(CT_PREPARE, SK_EUICC_KEM) in
+    let k_prepare = kdf_bind(SS_PREPARE, tid) in
+    
+    if verify_auth_mac(prepare_mac, mk_prepare_data(tid), k_prepare) = true then
+    
+    event EUICC_VERIFIED_PREPARE(dev, tid);
+
+    (* Step 15b: Generate ephemeral KEM keypair for profile encryption *)
+    new SK_EU_PROFILE : KEMsk_t;
+    let PK_EU_PROFILE = kem_pk(SK_EU_PROFILE) in
+
+    (* Step 15c: KEM-based response authentication *)
+    let encaps_resp = kem_encaps(PK_SMDP_KEM) in
+    let CT_RESP = get_ct(encaps_resp) in
+    let SS_RESP = get_ss(encaps_resp) in
+    let k_resp = kdf_bind(SS_RESP, tid) in
+    let resp_mac = auth_mac(mk_prepare_response(tid, PK_EU_PROFILE), k_resp) in
+
+    event EUICC_PREPARE_DOWNLOAD_OK(dev, tid, PK_EU_PROFILE, CT_RESP);
+
+    (* Step 16: Send PrepareDownloadResponse *)
+    out(LPA2EUICC, (dev, tid, PK_EU_PROFILE, CT_RESP, resp_mac));
+
+    (* Step 20: Receive LoadBoundProfilePackage *)
+    in(LPA2EUICC,
+       (=t_loadBPP,
+        dev_bpp       : Id_t,
+        tid_bpp       : Tid_t,
+        bpp_body      : bitstring,
+        bpp_mac       : MAC_t,
+        CT_PROFILE    : KEMct_t,
+        CT_PROFILE_AUTH : KEMct_t,
+        profile_auth_mac : MAC_t));
+    if dev_bpp = dev then
+    if tid_bpp = tid then
+
+    (* Step 21a: Verify KEM-based authentication for profile binding *)
+    let SS_PROFILE_AUTH = kem_decaps(CT_PROFILE_AUTH, SK_EUICC_KEM) in
+    let k_profile_auth = kdf_bind(SS_PROFILE_AUTH, tid) in
+    
+    let mk_bpp_body(=tid, =PK_EU_PROFILE, =CT_PROFILE, encrypted_profile:bitstring) = bpp_body in
+    if verify_auth_mac(profile_auth_mac, bpp_body, k_profile_auth) = true then
+
+    (* Step 21b: Decapsulate to get shared secret for profile encryption *)
+    let SS_PROFILE = kem_decaps(CT_PROFILE, SK_EU_PROFILE) in
+
+    (* Step 21c: Derive profile encryption keys *)
+    let k_enc = kdf_enc(SS_PROFILE) in
+    let k_mac = kdf_mac(SS_PROFILE) in
+    event EUICC_KEM_COMPLETE(dev, tid, PK_EU_PROFILE, CT_PROFILE);
+
+    (* Step 21d: Verify MAC *)
+    if verify_profile_mac(bpp_mac, bpp_body, k_mac) = true then
+
+    (* Step 21e: Decrypt profile *)
+    let profile = sdec(encrypted_profile, k_enc) in
+
+    (* Step 21f: Install profile *)
+    new iccid : ICCID_t;
+    event EUICC_PROFILE_INSTALLED(dev, tid, profile, iccid);
+
+    (* Step 22: Send ProfileInstallationResult with KEM-based auth *)
+    let encaps_install = kem_encaps(PK_SMDP_KEM) in
+    let CT_INSTALL = get_ct(encaps_install) in
+    let SS_INSTALL = get_ss(encaps_install) in
+    let k_install = kdf_bind_install(SS_INSTALL, tid, iccid) in
+    let install_mac = auth_mac(mk_install_result(tid, iccid), k_install) in
+    
+    out(LPA2EUICC, (dev, tid, iccid, CT_INSTALL, install_mac))
+  ).
+
+
+
+(* =====================================================================
+   SM-DP+ PROCESS - Phase B Only
+   ===================================================================== *)
+let SMDP(dev:Id_t, tid:Tid_t, PK_EUICC_KEM:KEMpk_t, profile:Profile_t) =
+  let PK_SMDP_KEM = kem_pk(SK_SMDP_KEM) in
+
+  (
+    (* Step 12: Create KEM-based authentication for PrepareDownload *)
+    let encaps_prepare = kem_encaps(PK_EUICC_KEM) in
+    let CT_PREPARE = get_ct(encaps_prepare) in
+    let SS_PREPARE = get_ss(encaps_prepare) in
+    let k_prepare = kdf_bind(SS_PREPARE, tid) in
+    let prepare_mac = auth_mac(mk_prepare_data(tid), k_prepare) in
+    
+    event SMDP_PREPARE_DOWNLOAD(dev, tid, CT_PREPARE);
+
+    (* Step 14: Send PrepareDownload with KEM auth *)
+    out(LPA2SMDP, (dev, tid, CT_PREPARE, prepare_mac));
+
+    (* Step 17: Receive PrepareDownloadResponse *)
+    in(LPA2SMDP,
+       (devS3        : Id_t,
+        tid3         : Tid_t,
+        PK_EU_PROFILE: KEMpk_t,
+        CT_RESP      : KEMct_t,
+        resp_mac     : MAC_t));
+    if devS3 = dev then
+    if tid3 = tid then
+
+    (* Verify KEM-based response authentication *)
+    let SS_RESP = kem_decaps(CT_RESP, SK_SMDP_KEM) in
+    let k_resp = kdf_bind(SS_RESP, tid) in
+    if verify_auth_mac(resp_mac, mk_prepare_response(tid, PK_EU_PROFILE), k_resp) = true then
+    
+    event SMDP_VERIFIED_PREPARE_RESPONSE(dev, tid, PK_EU_PROFILE);
+
+    (* Step 18b: Encapsulate to eUICC's ephemeral KEM public key *)
+    let encaps_profile = kem_encaps(PK_EU_PROFILE) in
+    let CT_PROFILE = get_ct(encaps_profile) in
+    let SS_PROFILE = get_ss(encaps_profile) in
+
+    (* Step 18c: Derive keys *)
+    let k_enc = kdf_enc(SS_PROFILE) in
+    let k_mac = kdf_mac(SS_PROFILE) in
+    event SMDP_KEM_COMPLETE(dev, tid, PK_EU_PROFILE, CT_PROFILE);
+
+    (* Step 18d: Encrypt profile *)
+    let encrypted_profile = senc(profile, k_enc) in
+
+    (* Step 18e: Create BPP body *)
+    let bpp_body = mk_bpp_body(tid, PK_EU_PROFILE, CT_PROFILE, encrypted_profile) in
+
+    (* Step 18f: Compute MAC *)
+    let bpp_mac = profile_mac(bpp_body, k_mac) in
+
+    (* Step 18g: KEM-based authentication for profile binding *)
+    let encaps_profile_auth = kem_encaps(PK_EUICC_KEM) in
+    let CT_PROFILE_AUTH = get_ct(encaps_profile_auth) in
+    let SS_PROFILE_AUTH = get_ss(encaps_profile_auth) in
+    let k_profile_auth = kdf_bind(SS_PROFILE_AUTH, tid) in
+    let profile_auth_mac = auth_mac(bpp_body, k_profile_auth) in
+
+    event SMDP_BOUND_PROFILE(dev, tid, profile);
+
+    (* Step 20: Send LoadBoundProfilePackage *)
+    out(LPA2SMDP, (dev, tid, bpp_body, bpp_mac, CT_PROFILE, CT_PROFILE_AUTH, profile_auth_mac));
+
+    (* Step 23: Receive HandleNotification *)
+    in(LPA2SMDP,
+       (devS4       : Id_t,
+        tid4        : Tid_t,
+        iccid       : ICCID_t,
+        CT_INSTALL  : KEMct_t,
+        install_mac : MAC_t));
+    if devS4 = dev then
+    if tid4 = tid then
+
+    (* Verify KEM-based installation confirmation *)
+    let SS_INSTALL = kem_decaps(CT_INSTALL, SK_SMDP_KEM) in
+    let k_install = kdf_bind_install(SS_INSTALL, tid, iccid) in
+    if verify_auth_mac(install_mac, mk_install_result(tid, iccid), k_install) = true then
+
+    event SMDP_INSTALL_CONFIRMED(dev, tid, iccid)
+  ).
+
+
+
+(* =====================================================================
+   LPA PROCESS - Relay (Phase B Only)
+   ===================================================================== *)
+let LPA(dev:Id_t, tid:Tid_t) =
+  (
+    (* Step 14: Receive PrepareDownload from SM-DP+ *)
+    in(LPA2SMDP, (dev5:Id_t, tid4:Tid_t, CT_PREPARE:KEMct_t, prepare_mac:MAC_t));
+    if dev5 = dev then
+    if tid4 = tid then
+
+    out(LPA2EUICC, (t_prepDownload, dev, tid4, CT_PREPARE, prepare_mac));
+
+    (* Step 16: Receive PrepareDownloadResponse from eUICC *)
+    in(LPA2EUICC, (dev6:Id_t, tid5:Tid_t, PK_EU_PROFILE:KEMpk_t, CT_RESP:KEMct_t, resp_mac:MAC_t));
+    if dev6 = dev then
+    if tid5 = tid then
+
+    out(LPA2SMDP, (dev, tid5, PK_EU_PROFILE, CT_RESP, resp_mac));
+
+    (* Step 19: Receive BoundProfilePackage from SM-DP+ *)
+    in(LPA2SMDP, (dev7:Id_t, tid6:Tid_t, bpp_body:bitstring, bpp_mac:MAC_t, 
+                  CT_PROFILE:KEMct_t, CT_PROFILE_AUTH:KEMct_t, profile_auth_mac:MAC_t));
+    if dev7 = dev then
+    if tid6 = tid then
+
+    out(LPA2EUICC, (t_loadBPP, dev, tid6, bpp_body, bpp_mac, CT_PROFILE, CT_PROFILE_AUTH, profile_auth_mac));
+
+    (* Step 22: Receive ProfileInstallationResult *)
+    in(LPA2EUICC, (dev8:Id_t, tid7:Tid_t, iccid:ICCID_t, CT_INSTALL:KEMct_t, install_mac:MAC_t));
+    if dev8 = dev then
+    if tid7 = tid then
+
+    out(LPA2SMDP, (dev, tid7, iccid, CT_INSTALL, install_mac))
+  ).
+
+
+
+(* =====================================================================
+   MAIN PROCESS
+   ===================================================================== *)
+process
+  new devMain : Id_t;
+  new tidMain : Tid_t;
+
+  (* Setup KEM keys (simulating Phase A results) *)
+  new SK_EUICC_KEM : KEMsk_t;
+  let PK_EUICC_KEM = kem_pk(SK_EUICC_KEM) in
+  let PK_SMDP_KEM = kem_pk(SK_SMDP_KEM) in
+
+  (
+    ( !SMDP(devMain, tidMain, PK_EUICC_KEM, secret_profile)
+    | !LPA(devMain, tidMain)
+    | !EUICC(devMain, tidMain, PK_SMDP_KEM, SK_EUICC_KEM)
+    )
+    
+    (* Forward Secrecy Test *)
+  | ( phase 1;
+      out(c, SK_SMDP_KEM)
+    )
+  )
