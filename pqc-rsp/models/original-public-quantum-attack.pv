@@ -1,0 +1,340 @@
+(* =============================================================================
+   SGP.22 Classical RSP - QUANTUM ATTACK MODEL
+   
+   This model demonstrates the "harvest-now-decrypt-later" attack:
+   - ES9+ channel is PUBLIC (attacker captures all traffic)
+   - Attacker has a QUANTUM COMPUTER that can:
+     1. Forge ECDSA signatures (break classical authentication)
+     2. Compute DH shared secrets from public keys (break key exchange)
+   
+   This shows why post-quantum migration is essential for RSP.
+   ============================================================================= *)
+
+(* ProVerif settings *)
+set reconstructTrace = true.  (* Generate attack traces *)
+
+(* ===== CHANNELS ===== *)
+free c         : channel.           (* Public channel *)
+free LPA2EUICC : channel [private]. (* Local LPA ↔ eUICC: still secure *)
+free ES9       : channel.           (* ES9+ is PUBLIC - attacker captures all *)
+
+
+(* ===== DATA TYPES ===== *)
+type Id_t.
+type Tid_t.
+type Nonce_t.
+type K_t.           (* Classical signing keys - QUANTUM VULNERABLE *)
+type DHKey_t.       (* ECDH keys - QUANTUM VULNERABLE *)
+type SharedSecret_t.
+type SymKey_t.
+type Sig_t.
+type Cert_t.
+type Tag_t.
+type Profile_t.
+type ICCID_t.
+type MAC_t.
+
+
+(* ===== CONSTANTS ===== *)
+const ID_SMDP   : Id_t.
+const ID_LPA    : Id_t.
+const ID_EUICC  : Id_t.
+
+const tag_ci    : Tag_t.
+const tag_dp    : Tag_t.
+const tag_eu    : Tag_t.
+
+const t_getChal      : Tag_t.
+const t_prepDownload : Tag_t.
+const t_loadBPP      : Tag_t.
+
+(* Root CI and SM-DP+ secret keys *)
+const SK_CI     : K_t [private].
+const SK_DPauth : K_t [private].
+
+
+(* ===== CRYPTO PRIMITIVES ===== *)
+
+(* --- Classical Signatures (ECDSA) --- *)
+fun pk(K_t) : K_t.
+
+fun signcert(Id_t, K_t, Tag_t, K_t) : Cert_t.
+reduc forall id:Id_t, Pk:K_t, role:Tag_t, Sk:K_t;
+  checkcert(signcert(id, Pk, role, Sk), pk(Sk)) = (id, Pk, role).
+
+letfun certificate(id:Id_t, Pk:K_t, role:Tag_t) =
+  signcert(id, Pk, role, SK_CI).
+
+fun sign(bitstring, K_t) : Sig_t.
+reduc forall m:bitstring, Sk:K_t;
+  checksign(sign(m, Sk), pk(Sk)) = m.
+
+(* !!!! QUANTUM ATTACK: Shor's algorithm breaks ECDSA !!!! *)
+(* Attacker can extract private key from public key *)
+reduc forall Sk:K_t;
+  quantum_extract_sk(pk(Sk)) = Sk.
+
+
+(* --- Ephemeral Diffie-Hellman (ECDH) --- *)
+fun dh_pk(DHKey_t) : DHKey_t.
+fun dh(DHKey_t, DHKey_t) : SharedSecret_t.
+equation forall x:DHKey_t, y:DHKey_t;
+  dh(x, dh_pk(y)) = dh(y, dh_pk(x)).
+
+(* !!!! QUANTUM ATTACK: Shor's algorithm breaks ECDH !!!! *)
+(* Attacker can extract private DH key from public DH key *)
+reduc forall x:DHKey_t;
+  quantum_dh_break(dh_pk(x)) = x.
+
+
+(* --- Key Derivation --- *)
+fun kdf_enc(SharedSecret_t) : SymKey_t.
+fun kdf_mac(SharedSecret_t) : SymKey_t.
+
+(* --- Symmetric Encryption (quantum-safe with sufficient key size) --- *)
+fun senc(Profile_t, SymKey_t) : bitstring.
+reduc forall p:Profile_t, k:SymKey_t;
+  sdec(senc(p, k), k) = p.
+
+(* --- MAC --- *)
+fun mac(bitstring, SymKey_t) : MAC_t.
+reduc forall m:bitstring, k:SymKey_t;
+  verify_mac(mac(m, k), m, k) = true.
+
+(* --- Message Constructors --- *)
+fun mk_serverSigned1(Tid_t, Nonce_t, Nonce_t, Id_t) : bitstring [data].
+fun mk_clientSigned1(Tid_t, Nonce_t) : bitstring [data].
+fun mk_serverSigned2(Tid_t) : bitstring [data].
+fun mk_clientSigned2(Tid_t, DHKey_t) : bitstring [data].
+fun mk_serverSigned3(Tid_t, DHKey_t) : bitstring [data].
+fun mk_bpp_body(Tid_t, DHKey_t, DHKey_t, bitstring) : bitstring [data].
+fun mk_install_result(Tid_t, ICCID_t) : bitstring [data].
+
+
+(* ===== EVENTS ===== *)
+event SMDP_AUTH_BEGIN(Id_t, Tid_t).
+event EUICC_AUTH_OK(Id_t, Tid_t).
+event SMDP_AUTH_OK(Id_t, Tid_t).
+event SMDP_PREPARE_DOWNLOAD(Id_t, Tid_t).
+event EUICC_PREPARE_DOWNLOAD_OK(Id_t, Tid_t, DHKey_t).
+event SMDP_BOUND_PROFILE(Id_t, Tid_t, Profile_t).
+event EUICC_PROFILE_INSTALLED(Id_t, Tid_t, Profile_t, ICCID_t).
+event SMDP_INSTALL_CONFIRMED(Id_t, Tid_t, ICCID_t).
+
+
+(* ===== QUERIES ===== *)
+
+(* === Authentication (will FAIL with quantum attacker) === *)
+query dev:Id_t, tid:Tid_t;
+  inj-event(EUICC_AUTH_OK(dev, tid)) ==> inj-event(SMDP_AUTH_BEGIN(dev, tid)).
+
+query dev:Id_t, tid:Tid_t;
+  inj-event(SMDP_AUTH_OK(dev, tid)) ==> inj-event(EUICC_AUTH_OK(dev, tid)).
+
+(* === Profile Confidentiality (will FAIL with quantum attacker) === *)
+free secret_profile : Profile_t [private].
+query attacker(secret_profile).
+
+(* === Profile Installation Authenticity === *)
+query dev:Id_t, tid:Tid_t, profile:Profile_t, iccid:ICCID_t;
+  inj-event(EUICC_PROFILE_INSTALLED(dev, tid, profile, iccid)) ==> 
+    inj-event(SMDP_BOUND_PROFILE(dev, tid, profile)).
+
+
+(* =============================================================================
+   eUICC PROCESS
+   ============================================================================= *)
+
+let EUICC(PK_CI:K_t, dev:Id_t) =
+  new SK_EUICC:K_t;
+  let PK_EUICC   = pk(SK_EUICC) in
+  let Cert_EUICC = certificate(ID_EUICC, PK_EUICC, tag_eu) in
+  out(c, Cert_EUICC);
+
+  (* Phase A *)
+  in(LPA2EUICC, (=t_getChal, =ID_LPA, dev_in:Id_t));
+  if dev_in = dev then
+  new eChal:Nonce_t;
+  out(LPA2EUICC, (dev, eChal));
+
+  in(LPA2EUICC, (dev_srv:Id_t, tid:Tid_t, serverSigned:bitstring, serverSig:Sig_t, Cert_DPauth:Cert_t));
+  if dev_srv = dev then
+
+  let (id_dp:Id_t, PK_DPauth:K_t, role_dp:Tag_t) = checkcert(Cert_DPauth, PK_CI) in
+  let decoded_srv:bitstring = checksign(serverSig, PK_DPauth) in
+  let mk_serverSigned1(tidU:Tid_t, eChalU:Nonce_t, sChalU:Nonce_t, smdpAddr:Id_t) = decoded_srv in
+
+  if tidU = tid then
+  if eChalU = eChal then
+  if smdpAddr = ID_SMDP then
+
+  event EUICC_AUTH_OK(dev, tid);
+
+  let clientSigned = mk_clientSigned1(tid, sChalU) in
+  let clientSig    = sign(clientSigned, SK_EUICC) in
+  out(LPA2EUICC, (dev, clientSigned, clientSig, Cert_EUICC));
+
+  (* Phase B *)
+  in(LPA2EUICC, (=t_prepDownload, dev_pd:Id_t, tid_pd:Tid_t, serverSig2:Sig_t));
+  if dev_pd = dev then
+  if tid_pd = tid then
+
+  let decoded_srv2:bitstring = checksign(serverSig2, PK_DPauth) in
+  let mk_serverSigned2(tid_check:Tid_t) = decoded_srv2 in
+  if tid_check = tid then
+
+  new sk_eu_eph : DHKey_t;
+  let pk_eu_eph = dh_pk(sk_eu_eph) in
+
+  event EUICC_PREPARE_DOWNLOAD_OK(dev, tid, pk_eu_eph);
+
+  let clientSigned2 = mk_clientSigned2(tid, pk_eu_eph) in
+  let clientSig2    = sign(clientSigned2, SK_EUICC) in
+  out(LPA2EUICC, (dev, pk_eu_eph, clientSig2));
+
+  in(LPA2EUICC, (=t_loadBPP, dev_bpp:Id_t, bpp_body:bitstring, bpp_mac:MAC_t, serverSig3:Sig_t));
+  if dev_bpp = dev then
+
+  let decoded_srv3:bitstring = checksign(serverSig3, PK_DPauth) in
+  let mk_serverSigned3(tid_bpp:Tid_t, pk_dp_eph:DHKey_t) = decoded_srv3 in
+  if tid_bpp = tid then
+
+  let shs = dh(sk_eu_eph, pk_dp_eph) in
+  let k_enc = kdf_enc(shs) in
+  let k_mac = kdf_mac(shs) in
+
+  let mk_bpp_body(=tid, =pk_eu_eph, =pk_dp_eph, encrypted_profile:bitstring) = bpp_body in
+  if verify_mac(bpp_mac, bpp_body, k_mac) = true then
+
+  let profile = sdec(encrypted_profile, k_enc) in
+  new iccid : ICCID_t;
+  event EUICC_PROFILE_INSTALLED(dev, tid, profile, iccid);
+
+  let installResult = mk_install_result(tid, iccid) in
+  let installSig    = sign(installResult, SK_EUICC) in
+  out(LPA2EUICC, (dev, tid, iccid, installSig)).
+
+
+(* =============================================================================
+   SM-DP+ PROCESS (communicates over PUBLIC ES9+)
+   ============================================================================= *)
+
+let SMDP(PK_CI:K_t, dev:Id_t, profile:Profile_t) =
+  let PK_DPauth   = pk(SK_DPauth) in
+  let Cert_DPauth = certificate(ID_SMDP, PK_DPauth, tag_dp) in
+  out(c, Cert_DPauth);
+
+  (* Phase A via PUBLIC ES9+ *)
+  in(ES9, (devS:Id_t, eChalS:Nonce_t));
+  if devS = dev then
+
+  new tid : Tid_t;
+  new sChal : Nonce_t;
+  event SMDP_AUTH_BEGIN(devS, tid);
+
+  let serverSigned = mk_serverSigned1(tid, eChalS, sChal, ID_SMDP) in
+  let serverSig    = sign(serverSigned, SK_DPauth) in
+  out(ES9, (devS, tid, serverSigned, serverSig, Cert_DPauth));
+
+  in(ES9, (devS2:Id_t, clientSigned:bitstring, clientSig:Sig_t, Cert_EUICC:Cert_t));
+  if devS2 = dev then
+
+  let (id_eu:Id_t, PK_EUICC:K_t, role_eu:Tag_t) = checkcert(Cert_EUICC, PK_CI) in
+  let decoded_cli:bitstring = checksign(clientSig, PK_EUICC) in
+  let mk_clientSigned1(tid2:Tid_t, sChal2:Nonce_t) = decoded_cli in
+
+  if tid2 = tid then
+  if sChal2 = sChal then
+  event SMDP_AUTH_OK(dev, tid);
+
+  (* Phase B via PUBLIC ES9+ *)
+  let serverSigned2 = mk_serverSigned2(tid) in
+  let serverSig2    = sign(serverSigned2, SK_DPauth) in
+  event SMDP_PREPARE_DOWNLOAD(dev, tid);
+  out(ES9, (dev, tid, serverSig2));
+
+  in(ES9, (devS3:Id_t, pk_eu_eph:DHKey_t, clientSig2:Sig_t));
+  if devS3 = dev then
+
+  let decoded_cli2:bitstring = checksign(clientSig2, PK_EUICC) in
+  let mk_clientSigned2(tid3:Tid_t, pk_check:DHKey_t) = decoded_cli2 in
+  if tid3 = tid then
+  if pk_check = pk_eu_eph then
+
+  new sk_dp_eph : DHKey_t;
+  let pk_dp_eph = dh_pk(sk_dp_eph) in
+
+  let shs = dh(sk_dp_eph, pk_eu_eph) in
+  let k_enc = kdf_enc(shs) in
+  let k_mac = kdf_mac(shs) in
+
+  let encrypted_profile = senc(profile, k_enc) in
+  let bpp_body = mk_bpp_body(tid, pk_eu_eph, pk_dp_eph, encrypted_profile) in
+  let bpp_mac = mac(bpp_body, k_mac) in
+
+  let serverSigned3 = mk_serverSigned3(tid, pk_dp_eph) in
+  let serverSig3    = sign(serverSigned3, SK_DPauth) in
+  event SMDP_BOUND_PROFILE(dev, tid, profile);
+  out(ES9, (dev, bpp_body, bpp_mac, serverSig3));
+
+  in(ES9, (devS4:Id_t, tid_result:Tid_t, iccid:ICCID_t, installSig:Sig_t));
+  if devS4 = dev then
+  if tid_result = tid then
+
+  let decoded_result:bitstring = checksign(installSig, PK_EUICC) in
+  let mk_install_result(tid_check:Tid_t, iccid_check:ICCID_t) = decoded_result in
+  if tid_check = tid then
+  if iccid_check = iccid then
+  event SMDP_INSTALL_CONFIRMED(dev, tid, iccid).
+
+
+(* =============================================================================
+   LPA PROCESS - Relay (ES9+ is PUBLIC)
+   ============================================================================= *)
+
+let LPA(dev:Id_t) =
+  out(LPA2EUICC, (t_getChal, ID_LPA, dev));
+  in(LPA2EUICC, (dev_ch:Id_t, eChal:Nonce_t));
+  if dev_ch = dev then
+  out(ES9, (dev, eChal));
+
+  in(ES9, (dev2:Id_t, tid:Tid_t, serverSigned:bitstring, serverSig:Sig_t, Cert_DPauth:Cert_t));
+  if dev2 = dev then
+  out(LPA2EUICC, (dev, tid, serverSigned, serverSig, Cert_DPauth));
+
+  in(LPA2EUICC, (dev3:Id_t, clientSigned:bitstring, clientSig:Sig_t, Cert_EUICC:Cert_t));
+  if dev3 = dev then
+  out(ES9, (dev, clientSigned, clientSig, Cert_EUICC));
+
+  in(ES9, (dev4:Id_t, tid4:Tid_t, serverSig2:Sig_t));
+  if dev4 = dev then
+  if tid4 = tid then
+  out(LPA2EUICC, (t_prepDownload, dev, tid, serverSig2));
+
+  in(LPA2EUICC, (dev5:Id_t, pk_eu_eph:DHKey_t, clientSig2:Sig_t));
+  if dev5 = dev then
+  out(ES9, (dev, pk_eu_eph, clientSig2));
+
+  in(ES9, (dev6:Id_t, bpp_body:bitstring, bpp_mac:MAC_t, serverSig3:Sig_t));
+  if dev6 = dev then
+  out(LPA2EUICC, (t_loadBPP, dev, bpp_body, bpp_mac, serverSig3));
+
+  in(LPA2EUICC, (dev7:Id_t, tid_result:Tid_t, iccid:ICCID_t, installSig:Sig_t));
+  if dev7 = dev then
+  out(ES9, (dev, tid_result, iccid, installSig)).
+
+
+(* =============================================================================
+   MAIN PROCESS
+   ============================================================================= *)
+
+process
+  let PK_CI = pk(SK_CI) in
+  out(c, PK_CI);
+
+  new devMain : Id_t;
+
+  ( !SMDP(PK_CI, devMain, secret_profile)
+  | !LPA(devMain)
+  | !EUICC(PK_CI, devMain)
+  )
