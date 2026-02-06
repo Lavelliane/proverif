@@ -57,16 +57,17 @@ reduc forall m:bitstring, Sk:K_t;
   checksign(sign(m, Sk), pk(Sk)) = m.
 
 (* --- Message Constructors --- *)
-fun mk_serverSigned1(Tid_t, Nonce_t, Nonce_t, Id_t) : bitstring [data].
-fun mk_clientSigned1(Tid_t, Nonce_t) : bitstring [data].
+fun mk_serverSigned1(Tid_t, Id_t, Nonce_t, Nonce_t, Id_t) : bitstring [data].
+fun mk_clientSigned1(Tid_t, Id_t, Nonce_t) : bitstring [data].
 
 
 (* ===== EVENTS ===== *)
 
 (* --- Phase A: Mutual Authentication --- *)
-event SMDP_AUTH_BEGIN(Id_t, Tid_t).
-event EUICC_AUTH_OK(Id_t, Tid_t).
-event SMDP_AUTH_OK(Id_t, Tid_t).
+event SMDP_AUTH_BEGIN(Id_t, Tid_t, Nonce_t, Nonce_t).
+event SMDP_SENT_SERVER1(Id_t, Tid_t, Nonce_t, Nonce_t, Id_t).
+event EUICC_AUTH_OK(Id_t, Tid_t, Nonce_t, Nonce_t, Id_t).
+event SMDP_AUTH_OK(Id_t, Tid_t, Nonce_t, Id_t).
 
 
 (* ===== QUERIES ===== *)
@@ -74,12 +75,14 @@ event SMDP_AUTH_OK(Id_t, Tid_t).
 (* --- CRITICAL PROPERTIES --- *)
 
 (* #9: Mutual Authentication - eUICC authenticates SM-DP+ *)
-query dev:Id_t, tid:Tid_t;
-  inj-event(EUICC_AUTH_OK(dev, tid)) ==> inj-event(SMDP_AUTH_BEGIN(dev, tid)).
+query dev:Id_t, tid:Tid_t, e:Nonce_t, s:Nonce_t;
+  inj-event(EUICC_AUTH_OK(dev, tid, e, s, ID_SMDP))
+    ==> inj-event(SMDP_SENT_SERVER1(dev, tid, e, s, ID_SMDP)).
 
 (* #9: Mutual Authentication - SM-DP+ authenticates eUICC *)
-query dev:Id_t, tid:Tid_t;
-  inj-event(SMDP_AUTH_OK(dev, tid)) ==> inj-event(EUICC_AUTH_OK(dev, tid)).
+query dev:Id_t, tid:Tid_t, e:Nonce_t, s:Nonce_t;
+  inj-event(SMDP_AUTH_OK(dev, tid, s, ID_EUICC))
+    ==> inj-event(EUICC_AUTH_OK(dev, tid, e, s, ID_SMDP)).
 
 
 (* =============================================================================
@@ -114,20 +117,23 @@ let EUICC(PK_CI:K_t, dev:Id_t) =
 
     (* (8a-c) Verify SM-DP+ certificate *)
     let (id_dp:Id_t, PK_DPauth:K_t, role_dp:Tag_t) = checkcert(Cert_DPauth, PK_CI) in
+    if id_dp = ID_SMDP then
+    if role_dp = tag_dp then
 
     (* (8c) Verify serverSignature1 *)
     let decoded_srv:bitstring = checksign(serverSig, PK_DPauth) in
-    let mk_serverSigned1(tidU:Tid_t, eChalU:Nonce_t, sChalU:Nonce_t, smdpAddr:Id_t) = decoded_srv in
+    let mk_serverSigned1(tidU:Tid_t, devU:Id_t, eChalU:Nonce_t, sChalU:Nonce_t, smdpAddr:Id_t) = decoded_srv in
 
-    (* (8d) Check challenge matches *)
+    (* (8d) Check challenge and identity matches *)
+    if devU = dev then
     if eChalU = eChal then
     if smdpAddr = ID_SMDP then
 
     (* (8e) eUICC authenticates SM-DP+ *)
-    event EUICC_AUTH_OK(dev, tidU);
+    event EUICC_AUTH_OK(dev, tidU, eChal, sChalU, id_dp);
 
     (* (9) Create eUICCSignature1 *)
-    let clientSigned = mk_clientSigned1(tidU, sChalU) in
+    let clientSigned = mk_clientSigned1(tidU, ID_EUICC, sChalU) in
     let clientSig    = sign(clientSigned, SK_EUICC) in
     out(LPA2EUICC, (dev, clientSigned, clientSig, Cert_EUICC))
   ).
@@ -156,11 +162,13 @@ let SMDP(PK_CI:K_t, dev:Id_t) =
     (* (5b) Generate serverChallenge *)
     new sChal : Nonce_t;
 
-    event SMDP_AUTH_BEGIN(devS, tid);
+    event SMDP_AUTH_BEGIN(devS, tid, eChalS, sChal);
 
     (* (5c) Create serverSignature1 *)
-    let serverSigned = mk_serverSigned1(tid, eChalS, sChal, ID_SMDP) in
+    let serverSigned = mk_serverSigned1(tid, devS, eChalS, sChal, ID_SMDP) in
     let serverSig    = sign(serverSigned, SK_DPauth) in
+
+    event SMDP_SENT_SERVER1(devS, tid, eChalS, sChal, ID_SMDP);
 
     (* (6) InitiateAuthentication response to LPA *)
     out(LPA2SMDP, (devS, serverSigned, serverSig, Cert_DPauth));
@@ -175,16 +183,17 @@ let SMDP(PK_CI:K_t, dev:Id_t) =
 
     (* (11a) Verify eUICC certificate *)
     let (id_eu:Id_t, PK_EUICC:K_t, role_eu:Tag_t) = checkcert(Cert_EUICC, PK_CI) in
+    if role_eu = tag_eu then
 
     (* (11b,c) Verify eUICCSignature1 *)
     let decoded_cli:bitstring = checksign(clientSig, PK_EUICC) in
-    let mk_clientSigned1(tid2:Tid_t, sChal2:Nonce_t) = decoded_cli in
+    let mk_clientSigned1(tid2:Tid_t, id_eu2:Id_t, sChal2:Nonce_t) = decoded_cli in
 
     (* (11d) Check session binding *)
     if tid2   = tid then
     if sChal2 = sChal then
 
-    event SMDP_AUTH_OK(dev, tid)
+    event SMDP_AUTH_OK(dev, tid, sChal, id_eu)
   ).
 
 

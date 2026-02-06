@@ -88,9 +88,10 @@ fun session_mac(SessionKey_t, bitstring) : bitstring.
 
 (* ===== EVENTS ===== *)
 
-event SMDP_BEGIN(Id_t, Tid_t).
-event EUICC_AUTH_OK(Id_t, Tid_t).
-event SMDP_AUTH_OK(Id_t, Tid_t).
+event SMDP_BEGIN(Id_t, Tid_t, Nonce_t, Nonce_t).
+event SMDP_SENT_AUTH(Id_t, Tid_t, Nonce_t, Nonce_t, Id_t).
+event EUICC_AUTH_OK(Id_t, Tid_t, Nonce_t, Nonce_t, Id_t).
+event SMDP_AUTH_OK(Id_t, Tid_t, Nonce_t, Id_t).
 
 event EUICC_SENT_FINISHED(Id_t, Tid_t, bitstring).
 event SMDP_VERIFIED_FINISHED(Id_t, Tid_t, bitstring).
@@ -106,12 +107,14 @@ event SMDP_KEY(Id_t, Tid_t, SessionKey_t).
 (* --- CRITICAL PROPERTIES --- *)
 
 (* #9: Mutual Authentication - eUICC authenticates SM-DP+ *)
-query dev:Id_t, tid:Tid_t;
-  inj-event(EUICC_AUTH_OK(dev, tid)) ==> inj-event(SMDP_BEGIN(dev, tid)).
+query dev:Id_t, tid:Tid_t, e:Nonce_t, s:Nonce_t;
+  inj-event(EUICC_AUTH_OK(dev, tid, e, s, ID_SMDP))
+    ==> inj-event(SMDP_SENT_AUTH(dev, tid, e, s, ID_SMDP)).
 
 (* #9: Mutual Authentication - SM-DP+ authenticates eUICC *)
-query dev:Id_t, tid:Tid_t, transcript:bitstring;
-  inj-event(SMDP_AUTH_OK(dev, tid)) ==> inj-event(EUICC_SENT_FINISHED(dev, tid, transcript)).
+query dev:Id_t, tid:Tid_t, s:Nonce_t, transcript:bitstring;
+  inj-event(SMDP_AUTH_OK(dev, tid, s, ID_EUICC))
+    ==> inj-event(EUICC_SENT_FINISHED(dev, tid, transcript)).
 
 (* #3: Session Key Agreement - both parties derive same key *)
 query dev:Id_t, tid:Tid_t, k:SessionKey_t;
@@ -200,7 +203,7 @@ let EUICC(PK_ROOT:PQSigPK_t, dev:Id_t) =
   if Finished_DP_in = expected_finished_dp then
 
   event EUICC_VERIFIED_FINISHED(dev, tid, transcript);
-  event EUICC_AUTH_OK(dev, tid).
+  event EUICC_AUTH_OK(dev, tid, eChal, serverNonce, ID_SMDP).
 
 
 
@@ -229,7 +232,7 @@ let SMDP(PK_ROOT:PQSigPK_t, dev:Id_t) =
 
   new tid : Tid_t;
   new serverNonce : Nonce_t;
-  event SMDP_BEGIN(devS, tid);
+  event SMDP_BEGIN(devS, tid, eChalS, serverNonce);
 
   (* KEM encapsulations *)
   new r_eph : KEMcoin_t;
@@ -239,6 +242,8 @@ let SMDP(PK_ROOT:PQSigPK_t, dev:Id_t) =
   new r_client : KEMcoin_t;
   let CT_CLIENT = kem_enc(PK_EUICC_KEM, r_client) in
   let SS_CLIENT = kem_ss(PK_EUICC_KEM, r_client) in
+
+  event SMDP_SENT_AUTH(devS, tid, eChalS, serverNonce, ID_SMDP);
 
   out(ES9, (tid, serverNonce, CT_EPH, CT_CLIENT, PK_SMDP_KEM, sig_dp));
 
@@ -261,7 +266,7 @@ let SMDP(PK_ROOT:PQSigPK_t, dev:Id_t) =
   event SMDP_SENT_FINISHED(dev, tid, transcript);
 
   out(ES9, (tid, Finished_DP));
-  event SMDP_AUTH_OK(dev, tid).
+  event SMDP_AUTH_OK(dev, tid, serverNonce, ID_EUICC).
 
 
 
