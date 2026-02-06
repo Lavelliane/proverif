@@ -129,9 +129,10 @@ fun transcript_hash(
 
 (* ===== EVENTS ===== *)
 
-event SMDP_BEGIN(Id_t, Tid_t).
-event EUICC_AUTH_OK(Id_t, Tid_t).
-event SMDP_AUTH_OK(Id_t, Tid_t).
+event SMDP_BEGIN(Id_t, Tid_t, Nonce_t, Nonce_t).
+event SMDP_SENT_AUTH(Id_t, Tid_t, Nonce_t, Nonce_t, Id_t).
+event EUICC_AUTH_OK(Id_t, Tid_t, Nonce_t, Nonce_t, Id_t).
+event SMDP_AUTH_OK(Id_t, Tid_t, Nonce_t, Id_t).
 
 event EUICC_SENT_FINISHED(Id_t, Tid_t, bitstring).
 event SMDP_VERIFIED_FINISHED(Id_t, Tid_t, bitstring).
@@ -147,12 +148,14 @@ event SMDP_KEY(Id_t, Tid_t, SessionKey_t).
 (* --- CRITICAL PROPERTIES --- *)
 
 (* #9: Mutual Authentication - eUICC authenticates SM-DP+ *)
-query dev:Id_t, tid:Tid_t;
-  inj-event(EUICC_AUTH_OK(dev, tid)) ==> inj-event(SMDP_BEGIN(dev, tid)).
+query dev:Id_t, tid:Tid_t, e:Nonce_t, s:Nonce_t;
+  inj-event(EUICC_AUTH_OK(dev, tid, e, s, ID_SMDP))
+    ==> inj-event(SMDP_SENT_AUTH(dev, tid, e, s, ID_SMDP)).
 
 (* #9: Mutual Authentication - SM-DP+ authenticates eUICC *)
-query dev:Id_t, tid:Tid_t, transcript:bitstring;
-  inj-event(SMDP_AUTH_OK(dev, tid)) ==> inj-event(EUICC_SENT_FINISHED(dev, tid, transcript)).
+query dev:Id_t, tid:Tid_t, s:Nonce_t, transcript:bitstring;
+  inj-event(SMDP_AUTH_OK(dev, tid, s, ID_EUICC))
+    ==> inj-event(EUICC_SENT_FINISHED(dev, tid, transcript)).
 
 (* #3: Session Key Agreement - both parties derive same key *)
 query dev:Id_t, tid:Tid_t, k:SessionKey_t;
@@ -234,7 +237,7 @@ let EUICC(PK_ROOT:PQSigPK_t, dev:Id_t) =
     if Finished_DP_in = kem_mac(KM, (transcript, Finished_EU)) then
     
     event EUICC_VERIFIED_FINISHED(dev, tid, transcript);
-    event EUICC_AUTH_OK(dev, tid)
+    event EUICC_AUTH_OK(dev, tid, eChal, serverNonce, ID_SMDP)
   ).
 
 
@@ -264,7 +267,7 @@ let SMDP(PK_ROOT:PQSigPK_t, dev:Id_t) =
     new tid : Tid_t;
     new serverNonce : Nonce_t;
     
-    event SMDP_BEGIN(devS, tid);
+    event SMDP_BEGIN(devS, tid, eChalS, serverNonce);
 
     (* KEM encapsulation *)
     let encaps_eph = kem_encaps(PK_EUICC_EPH) in
@@ -274,6 +277,8 @@ let SMDP(PK_ROOT:PQSigPK_t, dev:Id_t) =
     let encaps_client = kem_encaps(PK_EUICC_KEM) in
     let CT_CLIENT = get_ct(encaps_client) in
     let SS_CLIENT = get_ss(encaps_client) in
+
+    event SMDP_SENT_AUTH(devS, tid, eChalS, serverNonce, ID_SMDP);
 
     (* Step 5: Send ciphertexts to LPA *)
     out(LPA2SMDP, (devS, tid, CT_EPH, CT_CLIENT, serverNonce, CERT_SMDP));
@@ -309,7 +314,7 @@ let SMDP(PK_ROOT:PQSigPK_t, dev:Id_t) =
     (* Step 8: Send Finished *)
     out(LPA2SMDP, (devS, tid, Finished_DP));
     
-    event SMDP_AUTH_OK(dev, tid)
+    event SMDP_AUTH_OK(dev, tid, serverNonce, ID_EUICC)
   ).
 
 
