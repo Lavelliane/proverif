@@ -36,10 +36,20 @@ All suggestions from `MrKo.md` have been successfully applied to strengthen the 
 ### ✅ S5: Certificate Role and Identity Validation (Original Models Only)
 - **Applied to**: `original-auth.pv`, `original-public-channel.pv`
 - **Changes**: Added explicit checks after certificate verification:
-  - `if id_dp = ID_SMDP then if role_dp = tag_dp then`
-  - `if role_eu = tag_eu then`
-- **Impact**: Prevents acceptance of valid certificates with wrong roles or identities
-- **Note**: Full PQC models already enforce this via pattern matching (`=ID_SMDP`, `=tag_dp`)
+  - **EUICC side**: `if id_dp = ID_SMDP then if role_dp = tag_dp then`
+  - **SMDP side**: `if id_eu = ID_EUICC then if role_eu = tag_eu then`
+  - **Signature identity**: `if id_eu2 = id_eu then` (validates identity in signed message)
+- **Impact**: 
+  - Prevents acceptance of valid certificates with wrong roles or identities
+  - Ensures symmetric identity verification (both parties verify specific expected peer)
+  - Validates that signed identity matches certificate identity
+- **Note**: Full PQC models already enforce this via pattern matching (`=ID_SMDP`, `=tag_dp`, `=ID_EUICC`, `=tag_eu`)
+
+### ✅ S5+: Additional Identity Check (Post-Review Fix)
+- **Applied to**: Same models as S5
+- **Issue identified by CodeRabbit**: SMDP was only checking `role_eu` but not `id_eu`, creating asymmetry
+- **Fix**: Added missing `if id_eu = ID_EUICC then` check in SMDP process
+- **Impact**: Now both parties symmetrically verify both identity AND role of their peer
 
 ### ✅ S6: Channel Assumption Analysis
 - **Status**: Already addressed via `no-tls/` models

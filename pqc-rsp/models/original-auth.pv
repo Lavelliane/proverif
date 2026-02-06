@@ -183,13 +183,15 @@ let SMDP(PK_CI:K_t, dev:Id_t) =
 
     (* (11a) Verify eUICC certificate *)
     let (id_eu:Id_t, PK_EUICC:K_t, role_eu:Tag_t) = checkcert(Cert_EUICC, PK_CI) in
+    if id_eu = ID_EUICC then
     if role_eu = tag_eu then
 
     (* (11b,c) Verify eUICCSignature1 *)
     let decoded_cli:bitstring = checksign(clientSig, PK_EUICC) in
     let mk_clientSigned1(tid2:Tid_t, id_eu2:Id_t, sChal2:Nonce_t) = decoded_cli in
 
-    (* (11d) Check session binding *)
+    (* (11d) Check session binding and identity *)
+    if id_eu2 = id_eu then
     if tid2   = tid then
     if sChal2 = sChal then
 
