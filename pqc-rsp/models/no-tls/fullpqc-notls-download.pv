@@ -1,13 +1,15 @@
 (* =====================================================================
    SGP.22 Consumer eSIM Provisioning - PHASE B ONLY: Profile Download
-   with PUBLIC ES9+ Channel
+   with PUBLIC ES9+ Channel (No LPA - Direct SM-DP+ ↔ eUICC)
    
    FULL PQC STACK:
    - KEM-based authentication throughout
    
    PUBLIC CHANNEL SECURITY:
-   - LPA ↔ SM-DP+ channel is PUBLIC (attacker can see and modify)
+   - ALL communication is over PUBLIC ES9+ channel
+   - No LPA relay - direct SM-DP+ to eUICC communication
    - KEM-based authentication provides message authenticity
+   - Separate auth KEM layer binds profile to eUICC identity
    - Transport-independent security
    
    Phase B: Profile Download only
@@ -20,7 +22,6 @@ set reconstructTrace = false.
 
 (* ===== CHANNELS ===== *)
 free c         : channel.           (* Public channel: certificates *)
-free LPA2EUICC : channel [private]. (* Local LPA ↔ eUICC interface - secure *)
 free ES9       : channel.           (* PUBLIC ES9+: attacker can see/modify *)
 
 
@@ -63,6 +64,8 @@ reduc forall sk:KEMsk_t, r:KEMcoin_t;
 (* ===== KEY DERIVATION ===== *)
 fun kdf_profile(KEMss_t) : SymKey_t.
 fun kdf_bind(KEMss_t, Tid_t) : SymKey_t.
+fun kdf_auth(KEMss_t, Tid_t) : SymKey_t.
+fun kdf_install(KEMss_t, Tid_t, ICCID_t, KEMpk_t, bitstring) : SymKey_t.
 
 
 (* ===== SYMMETRIC ENCRYPTION ===== *)
@@ -78,7 +81,7 @@ fun mac(SymKey_t, bitstring) : bitstring.
 fun msg_prepare(Tid_t) : bitstring [data].
 fun msg_response(Tid_t, KEMpk_t) : bitstring [data].
 fun msg_profile(Tid_t, bitstring, bitstring) : bitstring [data].
-fun msg_install(Tid_t, ICCID_t) : bitstring [data].
+fun msg_install(Tid_t, ICCID_t, KEMpk_t) : bitstring [data].
 
 
 (* ===== EVENTS ===== *)
@@ -117,11 +120,12 @@ query dev:Id_t, tid:Tid_t, profile:Profile_t, iccid:ICCID_t;
 
 
 (* =====================================================================
-   eUICC PROCESS - Phase B Only (Public ES9+)
+   eUICC PROCESS - Phase B Only (Public ES9+, No LPA)
    ===================================================================== *)
 let EUICC(dev:Id_t, tid:Tid_t, PK_SMDP_KEM:KEMpk_t, SK_EUICC_KEM:KEMsk_t) =
   
-  in(LPA2EUICC,
+  (* Step 1: Receive PrepareDownload from SM-DP+ via ES9 *)
+  in(ES9,
      (tid_pd     : Tid_t,
       CT_PREPARE : bitstring,
       prepare_mac: bitstring));
@@ -144,16 +148,26 @@ let EUICC(dev:Id_t, tid:Tid_t, PK_SMDP_KEM:KEMpk_t, SK_EUICC_KEM:KEMsk_t) =
   let k_resp = kdf_bind(SS_RESP, tid) in
   let resp_mac = mac(k_resp, msg_response(tid, PK_EU_PROFILE)) in
 
-  out(LPA2EUICC, (tid, PK_EU_PROFILE, CT_RESP, resp_mac));
+  (* Step 2: Send response via ES9 *)
+  out(ES9, (tid, PK_EU_PROFILE, CT_RESP, resp_mac));
 
-  (* Receive profile package *)
-  in(LPA2EUICC,
+  (* Step 3: Receive profile package via ES9 *)
+  in(ES9,
      (tid_bpp        : Tid_t,
       CT_PROFILE     : bitstring,
       encrypted_prof : bitstring,
-      profile_mac_in : bitstring));
+      profile_mac_in : bitstring,
+      CT_AUTH        : bitstring,
+      auth_mac_in    : bitstring));
   if tid_bpp = tid then
 
+  (* Verify auth KEM: proves sender knows PK_EUICC_KEM from cert *)
+  let SS_AUTH = kem_dec(CT_AUTH, SK_EUICC_KEM) in
+  let k_auth = kdf_auth(SS_AUTH, tid) in
+  let expected_auth_mac = mac(k_auth, msg_profile(tid, CT_PROFILE, encrypted_prof)) in
+  if auth_mac_in = expected_auth_mac then
+
+  (* Decrypt profile *)
   let SS_PROFILE = kem_dec(CT_PROFILE, SK_EU_PROFILE) in
   let k_profile = kdf_profile(SS_PROFILE) in
 
@@ -164,14 +178,14 @@ let EUICC(dev:Id_t, tid:Tid_t, PK_SMDP_KEM:KEMpk_t, SK_EUICC_KEM:KEMsk_t) =
   new iccid : ICCID_t;
   event EUICC_PROFILE_INSTALLED(dev, tid, profile, iccid);
 
-  (* Send install confirmation *)
+  (* Step 4: Send install confirmation via ES9 *)
   new r_install : KEMcoin_t;
   let CT_INSTALL = kem_enc(PK_SMDP_KEM, r_install) in
   let SS_INSTALL = kem_ss(PK_SMDP_KEM, r_install) in
-  let k_install = kdf_bind(SS_INSTALL, tid) in
-  let install_mac = mac(k_install, msg_install(tid, iccid)) in
+  let k_install = kdf_install(SS_INSTALL, tid, iccid, PK_EU_PROFILE, CT_PREPARE) in
+  let install_mac = mac(k_install, msg_install(tid, iccid, PK_EU_PROFILE)) in
 
-  out(LPA2EUICC, (tid, iccid, CT_INSTALL, install_mac)).
+  out(ES9, (tid, iccid, CT_INSTALL, install_mac)).
 
 
 
@@ -181,6 +195,7 @@ let EUICC(dev:Id_t, tid:Tid_t, PK_SMDP_KEM:KEMpk_t, SK_EUICC_KEM:KEMsk_t) =
 let SMDP(dev:Id_t, tid:Tid_t, PK_EUICC_KEM:KEMpk_t, profile:Profile_t) =
   let PK_SMDP_KEM = kem_pk(SK_SMDP_KEM) in
 
+  (* Step 1: Send PrepareDownload via ES9 *)
   new r_prepare : KEMcoin_t;
   let CT_PREPARE = kem_enc(PK_EUICC_KEM, r_prepare) in
   let SS_PREPARE = kem_ss(PK_EUICC_KEM, r_prepare) in
@@ -189,6 +204,7 @@ let SMDP(dev:Id_t, tid:Tid_t, PK_EUICC_KEM:KEMpk_t, profile:Profile_t) =
 
   out(ES9, (tid, CT_PREPARE, prepare_mac));
 
+  (* Step 2: Receive response via ES9 *)
   in(ES9,
      (tid3        : Tid_t,
       PK_EU_PROFILE: KEMpk_t,
@@ -211,9 +227,19 @@ let SMDP(dev:Id_t, tid:Tid_t, PK_EUICC_KEM:KEMpk_t, profile:Profile_t) =
   let encrypted_profile = senc(profile, k_profile) in
   let profile_mac_out = mac(k_profile, msg_profile(tid, CT_PROFILE, encrypted_profile)) in
 
-  event SMDP_BOUND_PROFILE(dev, tid, profile);
-  out(ES9, (tid, CT_PROFILE, encrypted_profile, profile_mac_out));
+  (* Auth KEM: encapsulate to eUICC's long-term key for identity binding *)
+  new r_auth : KEMcoin_t;
+  let CT_AUTH = kem_enc(PK_EUICC_KEM, r_auth) in
+  let SS_AUTH = kem_ss(PK_EUICC_KEM, r_auth) in
+  let k_auth = kdf_auth(SS_AUTH, tid) in
+  let auth_mac_out = mac(k_auth, msg_profile(tid, CT_PROFILE, encrypted_profile)) in
 
+  event SMDP_BOUND_PROFILE(dev, tid, profile);
+
+  (* Step 3: Send profile package with auth KEM via ES9 *)
+  out(ES9, (tid, CT_PROFILE, encrypted_profile, profile_mac_out, CT_AUTH, auth_mac_out));
+
+  (* Step 4: Receive install confirmation via ES9 *)
   in(ES9,
      (tid4      : Tid_t,
       iccid     : ICCID_t,
@@ -222,8 +248,8 @@ let SMDP(dev:Id_t, tid:Tid_t, PK_EUICC_KEM:KEMpk_t, profile:Profile_t) =
   if tid4 = tid then
 
   let SS_INSTALL = kem_dec(CT_INSTALL, SK_SMDP_KEM) in
-  let k_install = kdf_bind(SS_INSTALL, tid) in
-  let expected_install_mac = mac(k_install, msg_install(tid, iccid)) in
+  let k_install = kdf_install(SS_INSTALL, tid, iccid, PK_EU_PROFILE, CT_PREPARE) in
+  let expected_install_mac = mac(k_install, msg_install(tid, iccid, PK_EU_PROFILE)) in
   if install_mac = expected_install_mac then
 
   event SMDP_INSTALL_CONFIRMED(dev, tid, iccid).
@@ -246,7 +272,9 @@ process
     ( !SMDP(devMain, tidMain, PK_EUICC_KEM, secret_profile)
     | !EUICC(devMain, tidMain, PK_SMDP_KEM, SK_EUICC_KEM)
     )
+    (* Forward Secrecy Test: leak ALL long-term keys *)
   | ( phase 1;
-      out(c, SK_SMDP_KEM)
+      out(c, SK_SMDP_KEM);
+      out(c, SK_EUICC_KEM)
     )
   )

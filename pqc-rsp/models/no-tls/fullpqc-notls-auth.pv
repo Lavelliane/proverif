@@ -1,6 +1,6 @@
 (* =====================================================================
    SGP.22 Consumer eSIM Provisioning - PHASE A ONLY: KEM-based Mutual Authentication
-   with PUBLIC ES9+ Channel
+   with PUBLIC ES9+ Channel (No LPA - Direct SM-DP+ ↔ eUICC)
    
    FULL PQC STACK:
    - Certificate chain: PQ signatures (Dilithium)
@@ -8,7 +8,8 @@
    - Handshake auth: ML-KEM (KEMTLS)
    
    PUBLIC CHANNEL SECURITY:
-   - LPA ↔ SM-DP+ channel is PUBLIC (attacker can see and modify)
+   - ALL communication is over PUBLIC ES9+ channel
+   - No LPA relay - direct SM-DP+ to eUICC communication
    - Transcript binding + Finished messages provide authentication
    - Transport-independent security - secure even without TLS
    ===================================================================== *)
@@ -19,7 +20,6 @@ set reconstructTrace = false.
 
 (* ===== CHANNELS ===== *)
 free c         : channel.           (* Public channel: certificates *)
-free LPA2EUICC : channel [private]. (* Local LPA ↔ eUICC interface - secure *)
 free ES9       : channel.           (* PUBLIC ES9+: attacker can see/modify *)
 
 
@@ -49,8 +49,6 @@ const ID_EUICC  : Id_t.
 
 const tag_dp    : Tag_t.
 const tag_eu    : Tag_t.
-
-const t_getChal : Tag_t.
 
 (* Root CA PQ signature secret key *)
 const SK_ROOT_CA : PQSigSK_t [private].
@@ -84,6 +82,11 @@ fun kdf_session(KEMss_t, KEMss_t, KEMss_t, bitstring) : SessionKey_t.
 
 (* ===== MAC FUNCTIONS ===== *)
 fun session_mac(SessionKey_t, bitstring) : bitstring.
+
+
+(* ===== SYMMETRIC ENCRYPTION (for session key secrecy test) ===== *)
+fun senc_test(bitstring, SessionKey_t) : bitstring.
+reduc forall m:bitstring, k:SessionKey_t; sdec_test(senc_test(m, k), k) = m.
 
 
 (* ===== EVENTS ===== *)
@@ -120,9 +123,12 @@ query dev:Id_t, tid:Tid_t, s:Nonce_t, transcript:bitstring;
 query dev:Id_t, tid:Tid_t, k:SessionKey_t;
   inj-event(SMDP_KEY(dev, tid, k)) ==> inj-event(EUICC_KEY(dev, tid, k)).
 
-(* #12: Session Key Secrecy - attacker cannot learn session key *)
-free test_session_key : SessionKey_t [private].
-query attacker(test_session_key).
+(* #12: Session Key Secrecy - attacker cannot recover data protected by session key *)
+free secret_payload : bitstring [private].
+query attacker(secret_payload).
+
+(* #14: Forward Secrecy - session key remains secure after long-term key compromise *)
+query attacker(secret_payload) phase 1.
 
 (* --- IMPORTANT PROPERTIES --- *)
 
@@ -140,7 +146,7 @@ query dev:Id_t, tid:Tid_t, transcript:bitstring;
 
 
 (* =====================================================================
-   eUICC PROCESS - Phase A Only (Public ES9+)
+   eUICC PROCESS - Phase A Only (Public ES9+, No LPA)
    ===================================================================== *)
 let EUICC(PK_ROOT:PQSigPK_t, dev:Id_t) =
   (* Setup: Long-term KEM identity *)
@@ -158,11 +164,11 @@ let EUICC(PK_ROOT:PQSigPK_t, dev:Id_t) =
 
   new eChal : Nonce_t;
 
-  (* Send to SM-DP+ via public ES9+ channel *)
+  (* Step 1: Send to SM-DP+ via public ES9+ channel *)
   out(ES9, (dev, eChal, PK_EUICC_EPH, PK_EUICC_KEM, sig_eu));
 
-  (* Receive from SM-DP+ *)
-  in(LPA2EUICC,
+  (* Step 2: Receive from SM-DP+ via public ES9+ channel *)
+  in(ES9,
      (tid         : Tid_t,
       serverNonce : Nonce_t,
       CT_EPH      : bitstring,
@@ -193,10 +199,14 @@ let EUICC(PK_ROOT:PQSigPK_t, dev:Id_t) =
   event EUICC_SENT_FINISHED(dev, tid, transcript);
   event EUICC_KEY(dev, tid, session_key);
 
-  out(LPA2EUICC, (tid, CT_SERVER, Finished_EU));
+  (* Session key secrecy test: encrypt secret payload under session key *)
+  out(ES9, senc_test(secret_payload, session_key));
 
-  (* Verify SM-DP+ Finished *)
-  in(LPA2EUICC, (tid2:Tid_t, Finished_DP_in:bitstring));
+  (* Step 3: Send CT_SERVER + Finished via public ES9+ *)
+  out(ES9, (tid, CT_SERVER, Finished_EU));
+
+  (* Step 4: Receive and verify SM-DP+ Finished via public ES9+ *)
+  in(ES9, (tid2:Tid_t, Finished_DP_in:bitstring));
   if tid2 = tid then
 
   let expected_finished_dp = session_mac(session_key, (transcript, Finished_EU)) in
@@ -279,6 +289,13 @@ process
 
   new devMain : Id_t;
   
-  ( !SMDP(PK_ROOT, devMain)
-  | !EUICC(PK_ROOT, devMain)
+  (
+    ( !SMDP(PK_ROOT, devMain)
+    | !EUICC(PK_ROOT, devMain)
+    )
+    
+    (* Forward Secrecy Test: leak long-term key after protocol *)
+  | ( phase 1;
+      out(c, SK_SMDP_KEM)
+    )
   )

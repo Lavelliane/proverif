@@ -26,93 +26,98 @@ Process 0 (that is, the initial process):
     {24}let (=ID_EUICC,PK_EUICC_KEM: KEMpk_t,=tag_eu) = (if v then (if v_1 then (if v_2 then (if v_3 then (if (pq_verify(sig_1,cert_tbs_1,PK_ROOT) = true) then (id_1,kempk,role_1) else (ID_LPA,kempk,role_1)) else fail-any_type) else fail-any_type) else fail-any_type) else fail-any_type) in
     {25}new tid: Tid_t;
     {26}new serverNonce: Nonce_t;
-    {27}event SMDP_BEGIN(devS,tid);
+    {27}event SMDP_BEGIN(devS,tid,eChalS,serverNonce);
     {28}let encaps_eph: bitstring = kem_encaps(PK_EUICC_EPH) in
     {29}let CT_EPH: KEMct_t = get_ct(encaps_eph) in
     {30}let SS_EPH: KEMss_t = get_ss(encaps_eph) in
     {31}let encaps_client: bitstring = kem_encaps(PK_EUICC_KEM) in
     {32}let CT_CLIENT: KEMct_t = get_ct(encaps_client) in
     {33}let SS_CLIENT: KEMss_t = get_ss(encaps_client) in
-    {34}out(LPA2SMDP, (devS,tid,CT_EPH,CT_CLIENT,serverNonce,CERT_SMDP));
-    {35}in(LPA2SMDP, (devS2: Id_t,tid2: Tid_t,CT_SERVER: KEMct_t,Finished_EU_in: bitstring));
-    {36}if (devS2 = dev) then
-    {37}if (tid2 = tid) then
-    {38}let SS_SERVER: KEMss_t = kem_decaps(CT_SERVER,SK_SMDP_KEM) in
-    {39}let session_key: SessionKey_t = kemtls_kdf(SS_EPH,SS_SERVER,SS_CLIENT,eChalS,serverNonce,CT_EPH,CT_CLIENT,CT_SERVER,CERT_EUICC,CERT_SMDP,ID_EUICC,ID_SMDP) in
-    {40}let KEK: KEK_t = get_KEK(session_key) in
-    {41}let KM: KM_t = get_KM(session_key) in
-    {42}let transcript: bitstring = transcript_hash(eChalS,serverNonce,CT_EPH,CT_CLIENT,CT_SERVER,CERT_EUICC,CERT_SMDP) in
-    {43}if (Finished_EU_in = kem_mac(KM,transcript)) then
-    {44}event SMDP_VERIFIED_FINISHED(dev,tid,transcript);
-    {45}event SMDP_KEY(devS,tid,session_key);
-    {46}let Finished_DP: bitstring = kem_mac(KM,(transcript,Finished_EU_in)) in
-    {47}event SMDP_SENT_FINISHED(dev,tid,transcript);
-    {48}out(LPA2SMDP, (devS,tid,Finished_DP));
-    {49}event SMDP_AUTH_OK(dev,tid)
+    {34}event SMDP_SENT_AUTH(devS,tid,eChalS,serverNonce,ID_SMDP);
+    {35}out(LPA2SMDP, (devS,tid,CT_EPH,CT_CLIENT,serverNonce,CERT_SMDP));
+    {36}in(LPA2SMDP, (devS2: Id_t,tid2: Tid_t,CT_SERVER: KEMct_t,Finished_EU_in: bitstring));
+    {37}if (devS2 = dev) then
+    {38}if (tid2 = tid) then
+    {39}let SS_SERVER: KEMss_t = kem_decaps(CT_SERVER,SK_SMDP_KEM) in
+    {40}let session_key: SessionKey_t = kemtls_kdf(SS_EPH,SS_SERVER,SS_CLIENT,eChalS,serverNonce,CT_EPH,CT_CLIENT,CT_SERVER,CERT_EUICC,CERT_SMDP,ID_EUICC,ID_SMDP) in
+    {41}let KEK: KEK_t = get_KEK(session_key) in
+    {42}let KM: KM_t = get_KM(session_key) in
+    {43}let transcript: bitstring = transcript_hash(eChalS,serverNonce,CT_EPH,CT_CLIENT,CT_SERVER,CERT_EUICC,CERT_SMDP) in
+    {44}if (Finished_EU_in = kem_mac(KM,transcript)) then
+    {45}event SMDP_VERIFIED_FINISHED(dev,tid,transcript);
+    {46}event SMDP_KEY(devS,tid,session_key);
+    {47}let Finished_DP: bitstring = kem_mac(KM,(transcript,Finished_EU_in)) in
+    {48}event SMDP_SENT_FINISHED(dev,tid,transcript);
+    {49}out(LPA2SMDP, (devS,tid,Finished_DP));
+    {50}event SMDP_AUTH_OK(dev,tid,serverNonce,ID_EUICC)
 ) | (
-    {50}!
-    {51}let dev_1: Id_t = devMain in
-    {52}out(LPA2EUICC, (t_getChal,ID_LPA,dev_1));
-    {53}in(LPA2EUICC, (dev_ch: Id_t,eChal: Nonce_t,PK_EPH: KEMpk_t,CERT_EU: Cert_t));
-    {54}if (dev_ch = dev_1) then
-    {55}out(LPA2SMDP, (dev_1,eChal,PK_EPH,CERT_EU));
-    {56}in(LPA2SMDP, (dev2: Id_t,tid_1: Tid_t,CT_EPH_1: KEMct_t,CT_CLIENT_1: KEMct_t,serverNonce_1: Nonce_t,CERT_DP: Cert_t));
-    {57}if (dev2 = dev_1) then
-    {58}out(LPA2EUICC, (dev_1,tid_1,CT_EPH_1,CT_CLIENT_1,serverNonce_1,CERT_DP));
-    {59}in(LPA2EUICC, (dev3: Id_t,tid2_1: Tid_t,CT_SERVER_1: KEMct_t,Finished_EU: bitstring));
-    {60}if (dev3 = dev_1) then
-    {61}out(LPA2SMDP, (dev_1,tid2_1,CT_SERVER_1,Finished_EU));
-    {62}in(LPA2SMDP, (dev4: Id_t,tid3: Tid_t,Finished_DP_1: bitstring));
-    {63}if (dev4 = dev_1) then
-    {64}out(LPA2EUICC, (dev_1,tid3,Finished_DP_1))
+    {51}!
+    {52}let dev_1: Id_t = devMain in
+    {53}out(LPA2EUICC, (t_getChal,ID_LPA,dev_1));
+    {54}in(LPA2EUICC, (dev_ch: Id_t,eChal: Nonce_t,PK_EPH: KEMpk_t,CERT_EU: Cert_t));
+    {55}if (dev_ch = dev_1) then
+    {56}out(LPA2SMDP, (dev_1,eChal,PK_EPH,CERT_EU));
+    {57}in(LPA2SMDP, (dev2: Id_t,tid_1: Tid_t,CT_EPH_1: KEMct_t,CT_CLIENT_1: KEMct_t,serverNonce_1: Nonce_t,CERT_DP: Cert_t));
+    {58}if (dev2 = dev_1) then
+    {59}out(LPA2EUICC, (dev_1,tid_1,CT_EPH_1,CT_CLIENT_1,serverNonce_1,CERT_DP));
+    {60}in(LPA2EUICC, (dev3: Id_t,tid2_1: Tid_t,CT_SERVER_1: KEMct_t,Finished_EU: bitstring));
+    {61}if (dev3 = dev_1) then
+    {62}out(LPA2SMDP, (dev_1,tid2_1,CT_SERVER_1,Finished_EU));
+    {63}in(LPA2SMDP, (dev4: Id_t,tid3: Tid_t,Finished_DP_1: bitstring));
+    {64}if (dev4 = dev_1) then
+    {65}out(LPA2EUICC, (dev_1,tid3,Finished_DP_1))
 ) | (
-    {65}!
-    {66}let dev_2: Id_t = devMain in
-    {67}new SK_EUICC_KEM: KEMsk_t;
-    {68}let PK_EUICC_KEM_1: KEMpk_t = kem_pk(SK_EUICC_KEM) in
-    {69}let id_2: Id_t = ID_EUICC in
-    {70}let role_2: Tag_t = tag_eu in
-    {71}let cert_tbs_2: bitstring = (id_2,PK_EUICC_KEM_1,role_2) in
-    {72}let sig_2: PQSig_t = pq_sign(cert_tbs_2,SK_ROOT_CA) in
-    {73}let CERT_EUICC_1: Cert_t = make_cert(id_2,PK_EUICC_KEM_1,role_2,sig_2) in
-    {74}out(c, CERT_EUICC_1);
-    {75}new SK_EUICC_EPH: KEMsk_t;
-    {76}let PK_EUICC_EPH_1: KEMpk_t = kem_pk(SK_EUICC_EPH) in
-    {77}in(LPA2EUICC, (=t_getChal,=ID_LPA,dev_in: Id_t));
-    {78}if (dev_in = dev_2) then
-    {79}new eChal_1: Nonce_t;
-    {80}out(LPA2EUICC, (dev_2,eChal_1,PK_EUICC_EPH_1,CERT_EUICC_1));
-    {81}in(LPA2EUICC, (dev_in2: Id_t,tid_2: Tid_t,CT_EPH_2: KEMct_t,CT_CLIENT_2: KEMct_t,serverNonce_2: Nonce_t,CERT_SMDP_1: Cert_t));
-    {82}if (dev_in2 = dev_2) then
-    {83}let id_3: Id_t = catch-fail(get_cert_id(CERT_SMDP_1)) in
-    {84}let v_4: bool = not-caught-fail(id_3) in
-    {85}let kempk_1: KEMpk_t = (if v_4 then catch-fail(get_cert_kempk(CERT_SMDP_1)) else caught-fail) in
-    {86}let v_5: bool = not-caught-fail(kempk_1) in
-    {87}let role_3: Tag_t = (if v_5 then catch-fail(get_cert_role(CERT_SMDP_1)) else caught-fail) in
-    {88}let v_6: bool = not-caught-fail(role_3) in
-    {89}let sig_3: PQSig_t = (if v_6 then catch-fail(get_cert_sig(CERT_SMDP_1)) else caught-fail) in
-    {90}let v_7: bool = not-caught-fail(sig_3) in
-    {91}let cert_tbs_3: bitstring = (if v_7 then (id_3,kempk_1,role_3) else caught-fail) in
-    {92}let (=ID_SMDP,PK_SMDP_KEM_1: KEMpk_t,=tag_dp) = (if v_4 then (if v_5 then (if v_6 then (if v_7 then (if (pq_verify(sig_3,cert_tbs_3,PK_ROOT) = true) then (id_3,kempk_1,role_3) else (ID_LPA,kempk_1,role_3)) else fail-any_type) else fail-any_type) else fail-any_type) else fail-any_type) in
-    {93}let SS_EPH_1: KEMss_t = kem_decaps(CT_EPH_2,SK_EUICC_EPH) in
-    {94}let SS_CLIENT_1: KEMss_t = kem_decaps(CT_CLIENT_2,SK_EUICC_KEM) in
-    {95}let encaps_server: bitstring = kem_encaps(PK_SMDP_KEM_1) in
-    {96}let CT_SERVER_2: KEMct_t = get_ct(encaps_server) in
-    {97}let SS_SERVER_1: KEMss_t = get_ss(encaps_server) in
-    {98}let session_key_1: SessionKey_t = kemtls_kdf(SS_EPH_1,SS_SERVER_1,SS_CLIENT_1,eChal_1,serverNonce_2,CT_EPH_2,CT_CLIENT_2,CT_SERVER_2,CERT_EUICC_1,CERT_SMDP_1,ID_EUICC,ID_SMDP) in
-    {99}let KEK_1: KEK_t = get_KEK(session_key_1) in
-    {100}let KM_1: KM_t = get_KM(session_key_1) in
-    {101}let transcript_1: bitstring = transcript_hash(eChal_1,serverNonce_2,CT_EPH_2,CT_CLIENT_2,CT_SERVER_2,CERT_EUICC_1,CERT_SMDP_1) in
-    {102}let Finished_EU_1: bitstring = kem_mac(KM_1,transcript_1) in
-    {103}event EUICC_SENT_FINISHED(dev_2,tid_2,transcript_1);
-    {104}event EUICC_KEY(dev_2,tid_2,session_key_1);
-    {105}out(LPA2EUICC, (dev_2,tid_2,CT_SERVER_2,Finished_EU_1));
-    {106}in(LPA2EUICC, (dev_in3: Id_t,tid3_1: Tid_t,Finished_DP_in: bitstring));
-    {107}if (dev_in3 = dev_2) then
-    {108}if (tid3_1 = tid_2) then
-    {109}if (Finished_DP_in = kem_mac(KM_1,(transcript_1,Finished_EU_1))) then
-    {110}event EUICC_VERIFIED_FINISHED(dev_2,tid_2,transcript_1);
-    {111}event EUICC_AUTH_OK(dev_2,tid_2)
+    {66}!
+    {67}let dev_2: Id_t = devMain in
+    {68}new SK_EUICC_KEM: KEMsk_t;
+    {69}let PK_EUICC_KEM_1: KEMpk_t = kem_pk(SK_EUICC_KEM) in
+    {70}let id_2: Id_t = ID_EUICC in
+    {71}let role_2: Tag_t = tag_eu in
+    {72}let cert_tbs_2: bitstring = (id_2,PK_EUICC_KEM_1,role_2) in
+    {73}let sig_2: PQSig_t = pq_sign(cert_tbs_2,SK_ROOT_CA) in
+    {74}let CERT_EUICC_1: Cert_t = make_cert(id_2,PK_EUICC_KEM_1,role_2,sig_2) in
+    {75}out(c, CERT_EUICC_1);
+    {76}new SK_EUICC_EPH: KEMsk_t;
+    {77}let PK_EUICC_EPH_1: KEMpk_t = kem_pk(SK_EUICC_EPH) in
+    {78}in(LPA2EUICC, (=t_getChal,=ID_LPA,dev_in: Id_t));
+    {79}if (dev_in = dev_2) then
+    {80}new eChal_1: Nonce_t;
+    {81}out(LPA2EUICC, (dev_2,eChal_1,PK_EUICC_EPH_1,CERT_EUICC_1));
+    {82}in(LPA2EUICC, (dev_in2: Id_t,tid_2: Tid_t,CT_EPH_2: KEMct_t,CT_CLIENT_2: KEMct_t,serverNonce_2: Nonce_t,CERT_SMDP_1: Cert_t));
+    {83}if (dev_in2 = dev_2) then
+    {84}let id_3: Id_t = catch-fail(get_cert_id(CERT_SMDP_1)) in
+    {85}let v_4: bool = not-caught-fail(id_3) in
+    {86}let kempk_1: KEMpk_t = (if v_4 then catch-fail(get_cert_kempk(CERT_SMDP_1)) else caught-fail) in
+    {87}let v_5: bool = not-caught-fail(kempk_1) in
+    {88}let role_3: Tag_t = (if v_5 then catch-fail(get_cert_role(CERT_SMDP_1)) else caught-fail) in
+    {89}let v_6: bool = not-caught-fail(role_3) in
+    {90}let sig_3: PQSig_t = (if v_6 then catch-fail(get_cert_sig(CERT_SMDP_1)) else caught-fail) in
+    {91}let v_7: bool = not-caught-fail(sig_3) in
+    {92}let cert_tbs_3: bitstring = (if v_7 then (id_3,kempk_1,role_3) else caught-fail) in
+    {93}let (=ID_SMDP,PK_SMDP_KEM_1: KEMpk_t,=tag_dp) = (if v_4 then (if v_5 then (if v_6 then (if v_7 then (if (pq_verify(sig_3,cert_tbs_3,PK_ROOT) = true) then (id_3,kempk_1,role_3) else (ID_LPA,kempk_1,role_3)) else fail-any_type) else fail-any_type) else fail-any_type) else fail-any_type) in
+    {94}let SS_EPH_1: KEMss_t = kem_decaps(CT_EPH_2,SK_EUICC_EPH) in
+    {95}let SS_CLIENT_1: KEMss_t = kem_decaps(CT_CLIENT_2,SK_EUICC_KEM) in
+    {96}let encaps_server: bitstring = kem_encaps(PK_SMDP_KEM_1) in
+    {97}let CT_SERVER_2: KEMct_t = get_ct(encaps_server) in
+    {98}let SS_SERVER_1: KEMss_t = get_ss(encaps_server) in
+    {99}let session_key_1: SessionKey_t = kemtls_kdf(SS_EPH_1,SS_SERVER_1,SS_CLIENT_1,eChal_1,serverNonce_2,CT_EPH_2,CT_CLIENT_2,CT_SERVER_2,CERT_EUICC_1,CERT_SMDP_1,ID_EUICC,ID_SMDP) in
+    {100}let KEK_1: KEK_t = get_KEK(session_key_1) in
+    {101}let KM_1: KM_t = get_KM(session_key_1) in
+    {102}let transcript_1: bitstring = transcript_hash(eChal_1,serverNonce_2,CT_EPH_2,CT_CLIENT_2,CT_SERVER_2,CERT_EUICC_1,CERT_SMDP_1) in
+    {103}let Finished_EU_1: bitstring = kem_mac(KM_1,transcript_1) in
+    {104}event EUICC_SENT_FINISHED(dev_2,tid_2,transcript_1);
+    {105}event EUICC_KEY(dev_2,tid_2,session_key_1);
+    {106}out(c, senc_test(secret_payload,session_key_1));
+    {107}out(LPA2EUICC, (dev_2,tid_2,CT_SERVER_2,Finished_EU_1));
+    {108}in(LPA2EUICC, (dev_in3: Id_t,tid3_1: Tid_t,Finished_DP_in: bitstring));
+    {109}if (dev_in3 = dev_2) then
+    {110}if (tid3_1 = tid_2) then
+    {111}if (Finished_DP_in = kem_mac(KM_1,(transcript_1,Finished_EU_1))) then
+    {112}event EUICC_VERIFIED_FINISHED(dev_2,tid_2,transcript_1);
+    {113}event EUICC_AUTH_OK(dev_2,tid_2,eChal_1,serverNonce_2,ID_SMDP)
+) | (
+    {114}phase 1;
+    {115}out(c, SK_SMDP_KEM)
 )
 
 --  Process 1 (that is, process 0, with let moved downwards):
@@ -143,98 +148,104 @@ Process 0 (that is, the initial process):
     {24}let (=ID_EUICC,PK_EUICC_KEM: KEMpk_t,=tag_eu) = (if v then (if v_1 then (if v_2 then (if v_3 then (if (pq_verify(sig_1,cert_tbs_1,PK_ROOT) = true) then (id_1,kempk,role_1) else (ID_LPA,kempk,role_1)) else fail-any_type) else fail-any_type) else fail-any_type) else fail-any_type) in
     {25}new tid: Tid_t;
     {26}new serverNonce: Nonce_t;
-    {27}event SMDP_BEGIN(devS,tid);
+    {27}event SMDP_BEGIN(devS,tid,eChalS,serverNonce);
+    {34}event SMDP_SENT_AUTH(devS,tid,eChalS,serverNonce,ID_SMDP);
     {31}let encaps_client: bitstring = kem_encaps(PK_EUICC_KEM) in
     {32}let CT_CLIENT: KEMct_t = get_ct(encaps_client) in
     {28}let encaps_eph: bitstring = kem_encaps(PK_EUICC_EPH) in
     {29}let CT_EPH: KEMct_t = get_ct(encaps_eph) in
-    {34}out(LPA2SMDP, (devS,tid,CT_EPH,CT_CLIENT,serverNonce,CERT_SMDP));
-    {35}in(LPA2SMDP, (devS2: Id_t,tid2: Tid_t,CT_SERVER: KEMct_t,Finished_EU_in: bitstring));
-    {36}if (devS2 = dev) then
-    {37}if (tid2 = tid) then
-    {38}let SS_SERVER: KEMss_t = kem_decaps(CT_SERVER,SK_SMDP_KEM) in
-    {42}let transcript: bitstring = transcript_hash(eChalS,serverNonce,CT_EPH,CT_CLIENT,CT_SERVER,CERT_EUICC,CERT_SMDP) in
+    {35}out(LPA2SMDP, (devS,tid,CT_EPH,CT_CLIENT,serverNonce,CERT_SMDP));
+    {36}in(LPA2SMDP, (devS2: Id_t,tid2: Tid_t,CT_SERVER: KEMct_t,Finished_EU_in: bitstring));
+    {37}if (devS2 = dev) then
+    {38}if (tid2 = tid) then
+    {39}let SS_SERVER: KEMss_t = kem_decaps(CT_SERVER,SK_SMDP_KEM) in
+    {43}let transcript: bitstring = transcript_hash(eChalS,serverNonce,CT_EPH,CT_CLIENT,CT_SERVER,CERT_EUICC,CERT_SMDP) in
     {33}let SS_CLIENT: KEMss_t = get_ss(encaps_client) in
     {30}let SS_EPH: KEMss_t = get_ss(encaps_eph) in
-    {39}let session_key: SessionKey_t = kemtls_kdf(SS_EPH,SS_SERVER,SS_CLIENT,eChalS,serverNonce,CT_EPH,CT_CLIENT,CT_SERVER,CERT_EUICC,CERT_SMDP,ID_EUICC,ID_SMDP) in
-    {41}let KM: KM_t = get_KM(session_key) in
-    {43}if (Finished_EU_in = kem_mac(KM,transcript)) then
-    {44}event SMDP_VERIFIED_FINISHED(dev,tid,transcript);
-    {45}event SMDP_KEY(devS,tid,session_key);
-    {47}event SMDP_SENT_FINISHED(dev,tid,transcript);
-    {46}let Finished_DP: bitstring = kem_mac(KM,(transcript,Finished_EU_in)) in
-    {48}out(LPA2SMDP, (devS,tid,Finished_DP));
-    {49}event SMDP_AUTH_OK(dev,tid)
+    {40}let session_key: SessionKey_t = kemtls_kdf(SS_EPH,SS_SERVER,SS_CLIENT,eChalS,serverNonce,CT_EPH,CT_CLIENT,CT_SERVER,CERT_EUICC,CERT_SMDP,ID_EUICC,ID_SMDP) in
+    {42}let KM: KM_t = get_KM(session_key) in
+    {44}if (Finished_EU_in = kem_mac(KM,transcript)) then
+    {45}event SMDP_VERIFIED_FINISHED(dev,tid,transcript);
+    {46}event SMDP_KEY(devS,tid,session_key);
+    {48}event SMDP_SENT_FINISHED(dev,tid,transcript);
+    {47}let Finished_DP: bitstring = kem_mac(KM,(transcript,Finished_EU_in)) in
+    {49}out(LPA2SMDP, (devS,tid,Finished_DP));
+    {50}event SMDP_AUTH_OK(dev,tid,serverNonce,ID_EUICC)
 ) | (
-    {50}!
-    {51}let dev_1: Id_t = devMain in
-    {52}out(LPA2EUICC, (t_getChal,ID_LPA,dev_1));
-    {53}in(LPA2EUICC, (dev_ch: Id_t,eChal: Nonce_t,PK_EPH: KEMpk_t,CERT_EU: Cert_t));
-    {54}if (dev_ch = dev_1) then
-    {55}out(LPA2SMDP, (dev_1,eChal,PK_EPH,CERT_EU));
-    {56}in(LPA2SMDP, (dev2: Id_t,tid_1: Tid_t,CT_EPH_1: KEMct_t,CT_CLIENT_1: KEMct_t,serverNonce_1: Nonce_t,CERT_DP: Cert_t));
-    {57}if (dev2 = dev_1) then
-    {58}out(LPA2EUICC, (dev_1,tid_1,CT_EPH_1,CT_CLIENT_1,serverNonce_1,CERT_DP));
-    {59}in(LPA2EUICC, (dev3: Id_t,tid2_1: Tid_t,CT_SERVER_1: KEMct_t,Finished_EU: bitstring));
-    {60}if (dev3 = dev_1) then
-    {61}out(LPA2SMDP, (dev_1,tid2_1,CT_SERVER_1,Finished_EU));
-    {62}in(LPA2SMDP, (dev4: Id_t,tid3: Tid_t,Finished_DP_1: bitstring));
-    {63}if (dev4 = dev_1) then
-    {64}out(LPA2EUICC, (dev_1,tid3,Finished_DP_1))
+    {51}!
+    {52}let dev_1: Id_t = devMain in
+    {53}out(LPA2EUICC, (t_getChal,ID_LPA,dev_1));
+    {54}in(LPA2EUICC, (dev_ch: Id_t,eChal: Nonce_t,PK_EPH: KEMpk_t,CERT_EU: Cert_t));
+    {55}if (dev_ch = dev_1) then
+    {56}out(LPA2SMDP, (dev_1,eChal,PK_EPH,CERT_EU));
+    {57}in(LPA2SMDP, (dev2: Id_t,tid_1: Tid_t,CT_EPH_1: KEMct_t,CT_CLIENT_1: KEMct_t,serverNonce_1: Nonce_t,CERT_DP: Cert_t));
+    {58}if (dev2 = dev_1) then
+    {59}out(LPA2EUICC, (dev_1,tid_1,CT_EPH_1,CT_CLIENT_1,serverNonce_1,CERT_DP));
+    {60}in(LPA2EUICC, (dev3: Id_t,tid2_1: Tid_t,CT_SERVER_1: KEMct_t,Finished_EU: bitstring));
+    {61}if (dev3 = dev_1) then
+    {62}out(LPA2SMDP, (dev_1,tid2_1,CT_SERVER_1,Finished_EU));
+    {63}in(LPA2SMDP, (dev4: Id_t,tid3: Tid_t,Finished_DP_1: bitstring));
+    {64}if (dev4 = dev_1) then
+    {65}out(LPA2EUICC, (dev_1,tid3,Finished_DP_1))
 ) | (
-    {65}!
-    {67}new SK_EUICC_KEM: KEMsk_t;
-    {70}let role_2: Tag_t = tag_eu in
-    {69}let id_2: Id_t = ID_EUICC in
-    {68}let PK_EUICC_KEM_1: KEMpk_t = kem_pk(SK_EUICC_KEM) in
-    {71}let cert_tbs_2: bitstring = (id_2,PK_EUICC_KEM_1,role_2) in
-    {72}let sig_2: PQSig_t = pq_sign(cert_tbs_2,SK_ROOT_CA) in
-    {73}let CERT_EUICC_1: Cert_t = make_cert(id_2,PK_EUICC_KEM_1,role_2,sig_2) in
-    {74}out(c, CERT_EUICC_1);
-    {75}new SK_EUICC_EPH: KEMsk_t;
-    {77}in(LPA2EUICC, (=t_getChal,=ID_LPA,dev_in: Id_t));
-    {66}let dev_2: Id_t = devMain in
-    {78}if (dev_in = dev_2) then
-    {79}new eChal_1: Nonce_t;
-    {76}let PK_EUICC_EPH_1: KEMpk_t = kem_pk(SK_EUICC_EPH) in
-    {80}out(LPA2EUICC, (dev_2,eChal_1,PK_EUICC_EPH_1,CERT_EUICC_1));
-    {81}in(LPA2EUICC, (dev_in2: Id_t,tid_2: Tid_t,CT_EPH_2: KEMct_t,CT_CLIENT_2: KEMct_t,serverNonce_2: Nonce_t,CERT_SMDP_1: Cert_t));
-    {82}if (dev_in2 = dev_2) then
-    {83}let id_3: Id_t = catch-fail(get_cert_id(CERT_SMDP_1)) in
-    {84}let v_4: bool = not-caught-fail(id_3) in
-    {85}let kempk_1: KEMpk_t = (if v_4 then catch-fail(get_cert_kempk(CERT_SMDP_1)) else caught-fail) in
-    {86}let v_5: bool = not-caught-fail(kempk_1) in
-    {87}let role_3: Tag_t = (if v_5 then catch-fail(get_cert_role(CERT_SMDP_1)) else caught-fail) in
-    {88}let v_6: bool = not-caught-fail(role_3) in
-    {89}let sig_3: PQSig_t = (if v_6 then catch-fail(get_cert_sig(CERT_SMDP_1)) else caught-fail) in
-    {90}let v_7: bool = not-caught-fail(sig_3) in
-    {91}let cert_tbs_3: bitstring = (if v_7 then (id_3,kempk_1,role_3) else caught-fail) in
-    {92}let (=ID_SMDP,PK_SMDP_KEM_1: KEMpk_t,=tag_dp) = (if v_4 then (if v_5 then (if v_6 then (if v_7 then (if (pq_verify(sig_3,cert_tbs_3,PK_ROOT) = true) then (id_3,kempk_1,role_3) else (ID_LPA,kempk_1,role_3)) else fail-any_type) else fail-any_type) else fail-any_type) else fail-any_type) in
-    {93}let SS_EPH_1: KEMss_t = kem_decaps(CT_EPH_2,SK_EUICC_EPH) in
-    {94}let SS_CLIENT_1: KEMss_t = kem_decaps(CT_CLIENT_2,SK_EUICC_KEM) in
-    {95}let encaps_server: bitstring = kem_encaps(PK_SMDP_KEM_1) in
-    {96}let CT_SERVER_2: KEMct_t = get_ct(encaps_server) in
-    {101}let transcript_1: bitstring = transcript_hash(eChal_1,serverNonce_2,CT_EPH_2,CT_CLIENT_2,CT_SERVER_2,CERT_EUICC_1,CERT_SMDP_1) in
-    {103}event EUICC_SENT_FINISHED(dev_2,tid_2,transcript_1);
-    {97}let SS_SERVER_1: KEMss_t = get_ss(encaps_server) in
-    {98}let session_key_1: SessionKey_t = kemtls_kdf(SS_EPH_1,SS_SERVER_1,SS_CLIENT_1,eChal_1,serverNonce_2,CT_EPH_2,CT_CLIENT_2,CT_SERVER_2,CERT_EUICC_1,CERT_SMDP_1,ID_EUICC,ID_SMDP) in
-    {104}event EUICC_KEY(dev_2,tid_2,session_key_1);
-    {100}let KM_1: KM_t = get_KM(session_key_1) in
-    {102}let Finished_EU_1: bitstring = kem_mac(KM_1,transcript_1) in
-    {105}out(LPA2EUICC, (dev_2,tid_2,CT_SERVER_2,Finished_EU_1));
-    {106}in(LPA2EUICC, (dev_in3: Id_t,tid3_1: Tid_t,Finished_DP_in: bitstring));
-    {107}if (dev_in3 = dev_2) then
-    {108}if (tid3_1 = tid_2) then
-    {109}if (Finished_DP_in = kem_mac(KM_1,(transcript_1,Finished_EU_1))) then
-    {110}event EUICC_VERIFIED_FINISHED(dev_2,tid_2,transcript_1);
-    {111}event EUICC_AUTH_OK(dev_2,tid_2)
+    {66}!
+    {68}new SK_EUICC_KEM: KEMsk_t;
+    {71}let role_2: Tag_t = tag_eu in
+    {70}let id_2: Id_t = ID_EUICC in
+    {69}let PK_EUICC_KEM_1: KEMpk_t = kem_pk(SK_EUICC_KEM) in
+    {72}let cert_tbs_2: bitstring = (id_2,PK_EUICC_KEM_1,role_2) in
+    {73}let sig_2: PQSig_t = pq_sign(cert_tbs_2,SK_ROOT_CA) in
+    {74}let CERT_EUICC_1: Cert_t = make_cert(id_2,PK_EUICC_KEM_1,role_2,sig_2) in
+    {75}out(c, CERT_EUICC_1);
+    {76}new SK_EUICC_EPH: KEMsk_t;
+    {78}in(LPA2EUICC, (=t_getChal,=ID_LPA,dev_in: Id_t));
+    {67}let dev_2: Id_t = devMain in
+    {79}if (dev_in = dev_2) then
+    {80}new eChal_1: Nonce_t;
+    {77}let PK_EUICC_EPH_1: KEMpk_t = kem_pk(SK_EUICC_EPH) in
+    {81}out(LPA2EUICC, (dev_2,eChal_1,PK_EUICC_EPH_1,CERT_EUICC_1));
+    {82}in(LPA2EUICC, (dev_in2: Id_t,tid_2: Tid_t,CT_EPH_2: KEMct_t,CT_CLIENT_2: KEMct_t,serverNonce_2: Nonce_t,CERT_SMDP_1: Cert_t));
+    {83}if (dev_in2 = dev_2) then
+    {84}let id_3: Id_t = catch-fail(get_cert_id(CERT_SMDP_1)) in
+    {85}let v_4: bool = not-caught-fail(id_3) in
+    {86}let kempk_1: KEMpk_t = (if v_4 then catch-fail(get_cert_kempk(CERT_SMDP_1)) else caught-fail) in
+    {87}let v_5: bool = not-caught-fail(kempk_1) in
+    {88}let role_3: Tag_t = (if v_5 then catch-fail(get_cert_role(CERT_SMDP_1)) else caught-fail) in
+    {89}let v_6: bool = not-caught-fail(role_3) in
+    {90}let sig_3: PQSig_t = (if v_6 then catch-fail(get_cert_sig(CERT_SMDP_1)) else caught-fail) in
+    {91}let v_7: bool = not-caught-fail(sig_3) in
+    {92}let cert_tbs_3: bitstring = (if v_7 then (id_3,kempk_1,role_3) else caught-fail) in
+    {93}let (=ID_SMDP,PK_SMDP_KEM_1: KEMpk_t,=tag_dp) = (if v_4 then (if v_5 then (if v_6 then (if v_7 then (if (pq_verify(sig_3,cert_tbs_3,PK_ROOT) = true) then (id_3,kempk_1,role_3) else (ID_LPA,kempk_1,role_3)) else fail-any_type) else fail-any_type) else fail-any_type) else fail-any_type) in
+    {94}let SS_EPH_1: KEMss_t = kem_decaps(CT_EPH_2,SK_EUICC_EPH) in
+    {95}let SS_CLIENT_1: KEMss_t = kem_decaps(CT_CLIENT_2,SK_EUICC_KEM) in
+    {96}let encaps_server: bitstring = kem_encaps(PK_SMDP_KEM_1) in
+    {97}let CT_SERVER_2: KEMct_t = get_ct(encaps_server) in
+    {102}let transcript_1: bitstring = transcript_hash(eChal_1,serverNonce_2,CT_EPH_2,CT_CLIENT_2,CT_SERVER_2,CERT_EUICC_1,CERT_SMDP_1) in
+    {104}event EUICC_SENT_FINISHED(dev_2,tid_2,transcript_1);
+    {98}let SS_SERVER_1: KEMss_t = get_ss(encaps_server) in
+    {99}let session_key_1: SessionKey_t = kemtls_kdf(SS_EPH_1,SS_SERVER_1,SS_CLIENT_1,eChal_1,serverNonce_2,CT_EPH_2,CT_CLIENT_2,CT_SERVER_2,CERT_EUICC_1,CERT_SMDP_1,ID_EUICC,ID_SMDP) in
+    {105}event EUICC_KEY(dev_2,tid_2,session_key_1);
+    {106}out(c, senc_test(secret_payload,session_key_1));
+    {101}let KM_1: KM_t = get_KM(session_key_1) in
+    {103}let Finished_EU_1: bitstring = kem_mac(KM_1,transcript_1) in
+    {107}out(LPA2EUICC, (dev_2,tid_2,CT_SERVER_2,Finished_EU_1));
+    {108}in(LPA2EUICC, (dev_in3: Id_t,tid3_1: Tid_t,Finished_DP_in: bitstring));
+    {109}if (dev_in3 = dev_2) then
+    {110}if (tid3_1 = tid_2) then
+    {111}if (Finished_DP_in = kem_mac(KM_1,(transcript_1,Finished_EU_1))) then
+    {112}event EUICC_VERIFIED_FINISHED(dev_2,tid_2,transcript_1);
+    {113}event EUICC_AUTH_OK(dev_2,tid_2,eChal_1,serverNonce_2,ID_SMDP)
+) | (
+    {114}phase 1;
+    {115}out(c, SK_SMDP_KEM)
 )
 
--- Query inj-event(EUICC_AUTH_OK(dev_3,tid_3)) ==> inj-event(SMDP_BEGIN(dev_3,tid_3)) in process 1.
+-- Query inj-event(EUICC_AUTH_OK(dev_3,tid_3,e,s,ID_SMDP)) ==> inj-event(SMDP_SENT_AUTH(dev_3,tid_3,e,s,ID_SMDP)) in process 1.
 Translating the process into Horn clauses...
 Completing...
-Starting query inj-event(EUICC_AUTH_OK(dev_3,tid_3)) ==> inj-event(SMDP_BEGIN(dev_3,tid_3))
-goal reachable: b-event(@p_act(@occ35_1,(devMain[],tid_3,get_ct(kem_encaps(kem_pk(SK_SMDP_KEM))),kem_mac(get_KM(kemtls_kdf(get_ss(kem_encaps(kem_pk(SK_EUICC_EPH_1))),get_ss(kem_encaps(kem_pk(SK_SMDP_KEM))),get_ss(kem_encaps(kem_pk(SK_EUICC_KEM_1))),eChal_2,serverNonce_3,get_ct(kem_encaps(kem_pk(SK_EUICC_EPH_1))),get_ct(kem_encaps(kem_pk(SK_EUICC_KEM_1))),get_ct(kem_encaps(kem_pk(SK_SMDP_KEM))),make_cert(ID_EUICC,kem_pk(SK_EUICC_KEM_1),tag_eu,pq_sign((ID_EUICC,kem_pk(SK_EUICC_KEM_1),tag_eu),SK_ROOT_CA)),make_cert(ID_SMDP,kem_pk(SK_SMDP_KEM),tag_dp,pq_sign((ID_SMDP,kem_pk(SK_SMDP_KEM),tag_dp),SK_ROOT_CA)),ID_EUICC,ID_SMDP)),transcript_hash(eChal_2,serverNonce_3,get_ct(kem_encaps(kem_pk(SK_EUICC_EPH_1))),get_ct(kem_encaps(kem_pk(SK_EUICC_KEM_1))),get_ct(kem_encaps(kem_pk(SK_SMDP_KEM))),make_cert(ID_EUICC,kem_pk(SK_EUICC_KEM_1),tag_eu,pq_sign((ID_EUICC,kem_pk(SK_EUICC_KEM_1),tag_eu),SK_ROOT_CA)),make_cert(ID_SMDP,kem_pk(SK_SMDP_KEM),tag_dp,pq_sign((ID_SMDP,kem_pk(SK_SMDP_KEM),tag_dp),SK_ROOT_CA))))))) && b-inj-event(SMDP_BEGIN(devMain[],tid_3),@occ27_1) -> inj-event(EUICC_AUTH_OK(devMain[],tid_3),@occ111_1)
+200 rules inserted. Base: 181 rules (77 with conclusion selected). Queue: 13 rules.
+Starting query inj-event(EUICC_AUTH_OK(dev_3,tid_3,e,s,ID_SMDP)) ==> inj-event(SMDP_SENT_AUTH(dev_3,tid_3,e,s,ID_SMDP))
+goal reachable: b-event(@p_act(@occ36_1,(devMain[],tid_3,get_ct(kem_encaps(kem_pk(SK_SMDP_KEM))),kem_mac(get_KM(kemtls_kdf(get_ss(kem_encaps(kem_pk(SK_EUICC_EPH_1))),get_ss(kem_encaps(kem_pk(SK_SMDP_KEM))),get_ss(kem_encaps(kem_pk(SK_EUICC_KEM_1))),eChal_2,serverNonce_3,get_ct(kem_encaps(kem_pk(SK_EUICC_EPH_1))),get_ct(kem_encaps(kem_pk(SK_EUICC_KEM_1))),get_ct(kem_encaps(kem_pk(SK_SMDP_KEM))),make_cert(ID_EUICC,kem_pk(SK_EUICC_KEM_1),tag_eu,pq_sign((ID_EUICC,kem_pk(SK_EUICC_KEM_1),tag_eu),SK_ROOT_CA)),make_cert(ID_SMDP,kem_pk(SK_SMDP_KEM),tag_dp,pq_sign((ID_SMDP,kem_pk(SK_SMDP_KEM),tag_dp),SK_ROOT_CA)),ID_EUICC,ID_SMDP)),transcript_hash(eChal_2,serverNonce_3,get_ct(kem_encaps(kem_pk(SK_EUICC_EPH_1))),get_ct(kem_encaps(kem_pk(SK_EUICC_KEM_1))),get_ct(kem_encaps(kem_pk(SK_SMDP_KEM))),make_cert(ID_EUICC,kem_pk(SK_EUICC_KEM_1),tag_eu,pq_sign((ID_EUICC,kem_pk(SK_EUICC_KEM_1),tag_eu),SK_ROOT_CA)),make_cert(ID_SMDP,kem_pk(SK_SMDP_KEM),tag_dp,pq_sign((ID_SMDP,kem_pk(SK_SMDP_KEM),tag_dp),SK_ROOT_CA))))))) && b-inj-event(SMDP_SENT_AUTH(devMain[],tid_3,eChal_2,serverNonce_3,ID_SMDP),@occ34_1) -> inj-event(EUICC_AUTH_OK(devMain[],tid_3,eChal_2,serverNonce_3,ID_SMDP),@occ113_1)
 The 1st, 2nd hypotheses occur strictly before the conclusion.
 Abbreviations:
 SK_EUICC_KEM_1 = SK_EUICC_KEM[!1 = @sid]
@@ -242,15 +253,16 @@ SK_EUICC_EPH_1 = SK_EUICC_EPH[!1 = @sid]
 eChal_2 = eChal_1[dev_in = devMain[],!1 = @sid]
 tid_3 = tid[CERT_EUICC = make_cert(ID_EUICC,kem_pk(SK_EUICC_KEM_1),tag_eu,pq_sign((ID_EUICC,kem_pk(SK_EUICC_KEM_1),tag_eu),SK_ROOT_CA)),PK_EUICC_EPH = kem_pk(SK_EUICC_EPH_1),eChalS = eChal_2,devS = devMain[],!1 = @sid_1]
 serverNonce_3 = serverNonce[CERT_EUICC = make_cert(ID_EUICC,kem_pk(SK_EUICC_KEM_1),tag_eu,pq_sign((ID_EUICC,kem_pk(SK_EUICC_KEM_1),tag_eu),SK_ROOT_CA)),PK_EUICC_EPH = kem_pk(SK_EUICC_EPH_1),eChalS = eChal_2,devS = devMain[],!1 = @sid_1]
-@occ111_1 = @occ111[Finished_DP_in = kem_mac(get_KM(kemtls_kdf(get_ss(kem_encaps(kem_pk(SK_EUICC_EPH_1))),get_ss(kem_encaps(kem_pk(SK_SMDP_KEM))),get_ss(kem_encaps(kem_pk(SK_EUICC_KEM_1))),eChal_2,serverNonce_3,get_ct(kem_encaps(kem_pk(SK_EUICC_EPH_1))),get_ct(kem_encaps(kem_pk(SK_EUICC_KEM_1))),get_ct(kem_encaps(kem_pk(SK_SMDP_KEM))),make_cert(ID_EUICC,kem_pk(SK_EUICC_KEM_1),tag_eu,pq_sign((ID_EUICC,kem_pk(SK_EUICC_KEM_1),tag_eu),SK_ROOT_CA)),make_cert(ID_SMDP,kem_pk(SK_SMDP_KEM),tag_dp,pq_sign((ID_SMDP,kem_pk(SK_SMDP_KEM),tag_dp),SK_ROOT_CA)),ID_EUICC,ID_SMDP)),(transcript_hash(eChal_2,serverNonce_3,get_ct(kem_encaps(kem_pk(SK_EUICC_EPH_1))),get_ct(kem_encaps(kem_pk(SK_EUICC_KEM_1))),get_ct(kem_encaps(kem_pk(SK_SMDP_KEM))),make_cert(ID_EUICC,kem_pk(SK_EUICC_KEM_1),tag_eu,pq_sign((ID_EUICC,kem_pk(SK_EUICC_KEM_1),tag_eu),SK_ROOT_CA)),make_cert(ID_SMDP,kem_pk(SK_SMDP_KEM),tag_dp,pq_sign((ID_SMDP,kem_pk(SK_SMDP_KEM),tag_dp),SK_ROOT_CA))),kem_mac(get_KM(kemtls_kdf(get_ss(kem_encaps(kem_pk(SK_EUICC_EPH_1))),get_ss(kem_encaps(kem_pk(SK_SMDP_KEM))),get_ss(kem_encaps(kem_pk(SK_EUICC_KEM_1))),eChal_2,serverNonce_3,get_ct(kem_encaps(kem_pk(SK_EUICC_EPH_1))),get_ct(kem_encaps(kem_pk(SK_EUICC_KEM_1))),get_ct(kem_encaps(kem_pk(SK_SMDP_KEM))),make_cert(ID_EUICC,kem_pk(SK_EUICC_KEM_1),tag_eu,pq_sign((ID_EUICC,kem_pk(SK_EUICC_KEM_1),tag_eu),SK_ROOT_CA)),make_cert(ID_SMDP,kem_pk(SK_SMDP_KEM),tag_dp,pq_sign((ID_SMDP,kem_pk(SK_SMDP_KEM),tag_dp),SK_ROOT_CA)),ID_EUICC,ID_SMDP)),transcript_hash(eChal_2,serverNonce_3,get_ct(kem_encaps(kem_pk(SK_EUICC_EPH_1))),get_ct(kem_encaps(kem_pk(SK_EUICC_KEM_1))),get_ct(kem_encaps(kem_pk(SK_SMDP_KEM))),make_cert(ID_EUICC,kem_pk(SK_EUICC_KEM_1),tag_eu,pq_sign((ID_EUICC,kem_pk(SK_EUICC_KEM_1),tag_eu),SK_ROOT_CA)),make_cert(ID_SMDP,kem_pk(SK_SMDP_KEM),tag_dp,pq_sign((ID_SMDP,kem_pk(SK_SMDP_KEM),tag_dp),SK_ROOT_CA)))))),tid3_1 = tid_3,dev_in3 = devMain[],CERT_SMDP_1 = make_cert(ID_SMDP,kem_pk(SK_SMDP_KEM),tag_dp,pq_sign((ID_SMDP,kem_pk(SK_SMDP_KEM),tag_dp),SK_ROOT_CA)),serverNonce_2 = serverNonce_3,CT_CLIENT_2 = get_ct(kem_encaps(kem_pk(SK_EUICC_KEM_1))),CT_EPH_2 = get_ct(kem_encaps(kem_pk(SK_EUICC_EPH_1))),tid_2 = tid_3,dev_in2 = devMain[],dev_in = devMain[],!1 = @sid]
-@occ35_1 = @occ35[!1 = @sid_1]
-@occ27_1 = @occ27[CERT_EUICC = make_cert(ID_EUICC,kem_pk(SK_EUICC_KEM_1),tag_eu,pq_sign((ID_EUICC,kem_pk(SK_EUICC_KEM_1),tag_eu),SK_ROOT_CA)),PK_EUICC_EPH = kem_pk(SK_EUICC_EPH_1),eChalS = eChal_2,devS = devMain[],!1 = @sid_1]
-RESULT inj-event(EUICC_AUTH_OK(dev_3,tid_3)) ==> inj-event(SMDP_BEGIN(dev_3,tid_3)) is true.
--- Query inj-event(SMDP_AUTH_OK(dev_3,tid_3)) ==> inj-event(EUICC_SENT_FINISHED(dev_3,tid_3,transcript_2)) in process 1.
+@occ113_1 = @occ113[Finished_DP_in = kem_mac(get_KM(kemtls_kdf(get_ss(kem_encaps(kem_pk(SK_EUICC_EPH_1))),get_ss(kem_encaps(kem_pk(SK_SMDP_KEM))),get_ss(kem_encaps(kem_pk(SK_EUICC_KEM_1))),eChal_2,serverNonce_3,get_ct(kem_encaps(kem_pk(SK_EUICC_EPH_1))),get_ct(kem_encaps(kem_pk(SK_EUICC_KEM_1))),get_ct(kem_encaps(kem_pk(SK_SMDP_KEM))),make_cert(ID_EUICC,kem_pk(SK_EUICC_KEM_1),tag_eu,pq_sign((ID_EUICC,kem_pk(SK_EUICC_KEM_1),tag_eu),SK_ROOT_CA)),make_cert(ID_SMDP,kem_pk(SK_SMDP_KEM),tag_dp,pq_sign((ID_SMDP,kem_pk(SK_SMDP_KEM),tag_dp),SK_ROOT_CA)),ID_EUICC,ID_SMDP)),(transcript_hash(eChal_2,serverNonce_3,get_ct(kem_encaps(kem_pk(SK_EUICC_EPH_1))),get_ct(kem_encaps(kem_pk(SK_EUICC_KEM_1))),get_ct(kem_encaps(kem_pk(SK_SMDP_KEM))),make_cert(ID_EUICC,kem_pk(SK_EUICC_KEM_1),tag_eu,pq_sign((ID_EUICC,kem_pk(SK_EUICC_KEM_1),tag_eu),SK_ROOT_CA)),make_cert(ID_SMDP,kem_pk(SK_SMDP_KEM),tag_dp,pq_sign((ID_SMDP,kem_pk(SK_SMDP_KEM),tag_dp),SK_ROOT_CA))),kem_mac(get_KM(kemtls_kdf(get_ss(kem_encaps(kem_pk(SK_EUICC_EPH_1))),get_ss(kem_encaps(kem_pk(SK_SMDP_KEM))),get_ss(kem_encaps(kem_pk(SK_EUICC_KEM_1))),eChal_2,serverNonce_3,get_ct(kem_encaps(kem_pk(SK_EUICC_EPH_1))),get_ct(kem_encaps(kem_pk(SK_EUICC_KEM_1))),get_ct(kem_encaps(kem_pk(SK_SMDP_KEM))),make_cert(ID_EUICC,kem_pk(SK_EUICC_KEM_1),tag_eu,pq_sign((ID_EUICC,kem_pk(SK_EUICC_KEM_1),tag_eu),SK_ROOT_CA)),make_cert(ID_SMDP,kem_pk(SK_SMDP_KEM),tag_dp,pq_sign((ID_SMDP,kem_pk(SK_SMDP_KEM),tag_dp),SK_ROOT_CA)),ID_EUICC,ID_SMDP)),transcript_hash(eChal_2,serverNonce_3,get_ct(kem_encaps(kem_pk(SK_EUICC_EPH_1))),get_ct(kem_encaps(kem_pk(SK_EUICC_KEM_1))),get_ct(kem_encaps(kem_pk(SK_SMDP_KEM))),make_cert(ID_EUICC,kem_pk(SK_EUICC_KEM_1),tag_eu,pq_sign((ID_EUICC,kem_pk(SK_EUICC_KEM_1),tag_eu),SK_ROOT_CA)),make_cert(ID_SMDP,kem_pk(SK_SMDP_KEM),tag_dp,pq_sign((ID_SMDP,kem_pk(SK_SMDP_KEM),tag_dp),SK_ROOT_CA)))))),tid3_1 = tid_3,dev_in3 = devMain[],CERT_SMDP_1 = make_cert(ID_SMDP,kem_pk(SK_SMDP_KEM),tag_dp,pq_sign((ID_SMDP,kem_pk(SK_SMDP_KEM),tag_dp),SK_ROOT_CA)),serverNonce_2 = serverNonce_3,CT_CLIENT_2 = get_ct(kem_encaps(kem_pk(SK_EUICC_KEM_1))),CT_EPH_2 = get_ct(kem_encaps(kem_pk(SK_EUICC_EPH_1))),tid_2 = tid_3,dev_in2 = devMain[],dev_in = devMain[],!1 = @sid]
+@occ36_1 = @occ36[!1 = @sid_1]
+@occ34_1 = @occ34[CERT_EUICC = make_cert(ID_EUICC,kem_pk(SK_EUICC_KEM_1),tag_eu,pq_sign((ID_EUICC,kem_pk(SK_EUICC_KEM_1),tag_eu),SK_ROOT_CA)),PK_EUICC_EPH = kem_pk(SK_EUICC_EPH_1),eChalS = eChal_2,devS = devMain[],!1 = @sid_1]
+RESULT inj-event(EUICC_AUTH_OK(dev_3,tid_3,e,s,ID_SMDP)) ==> inj-event(SMDP_SENT_AUTH(dev_3,tid_3,e,s,ID_SMDP)) is true.
+-- Query inj-event(SMDP_AUTH_OK(dev_3,tid_3,s,ID_EUICC)) ==> inj-event(EUICC_SENT_FINISHED(dev_3,tid_3,transcript_2)) in process 1.
 Translating the process into Horn clauses...
 Completing...
-Starting query inj-event(SMDP_AUTH_OK(dev_3,tid_3)) ==> inj-event(EUICC_SENT_FINISHED(dev_3,tid_3,transcript_2))
-goal reachable: b-inj-event(EUICC_SENT_FINISHED(devMain[],tid_3,transcript_hash(eChal_2,serverNonce_3,get_ct(kem_encaps(kem_pk(SK_EUICC_EPH_1))),get_ct(kem_encaps(kem_pk(SK_EUICC_KEM_1))),get_ct(kem_encaps(kem_pk(SK_SMDP_KEM))),make_cert(ID_EUICC,kem_pk(SK_EUICC_KEM_1),tag_eu,pq_sign((ID_EUICC,kem_pk(SK_EUICC_KEM_1),tag_eu),SK_ROOT_CA)),make_cert(ID_SMDP,kem_pk(SK_SMDP_KEM),tag_dp,pq_sign((ID_SMDP,kem_pk(SK_SMDP_KEM),tag_dp),SK_ROOT_CA)))),@occ103_1) -> inj-event(SMDP_AUTH_OK(devMain[],tid_3),@occ49_1)
+200 rules inserted. Base: 182 rules (77 with conclusion selected). Queue: 14 rules.
+Starting query inj-event(SMDP_AUTH_OK(dev_3,tid_3,s,ID_EUICC)) ==> inj-event(EUICC_SENT_FINISHED(dev_3,tid_3,transcript_2))
+goal reachable: b-inj-event(EUICC_SENT_FINISHED(devMain[],tid_3,transcript_hash(eChal_2,serverNonce_3,get_ct(kem_encaps(kem_pk(SK_EUICC_EPH_1))),get_ct(kem_encaps(kem_pk(SK_EUICC_KEM_1))),get_ct(kem_encaps(kem_pk(SK_SMDP_KEM))),make_cert(ID_EUICC,kem_pk(SK_EUICC_KEM_1),tag_eu,pq_sign((ID_EUICC,kem_pk(SK_EUICC_KEM_1),tag_eu),SK_ROOT_CA)),make_cert(ID_SMDP,kem_pk(SK_SMDP_KEM),tag_dp,pq_sign((ID_SMDP,kem_pk(SK_SMDP_KEM),tag_dp),SK_ROOT_CA)))),@occ104_1) -> inj-event(SMDP_AUTH_OK(devMain[],tid_3,serverNonce_3,ID_EUICC),@occ50_1)
 The hypothesis occurs strictly before the conclusion.
 Abbreviations:
 SK_EUICC_KEM_1 = SK_EUICC_KEM[!1 = @sid]
@@ -258,14 +270,43 @@ SK_EUICC_EPH_1 = SK_EUICC_EPH[!1 = @sid]
 eChal_2 = eChal_1[dev_in = devMain[],!1 = @sid]
 tid_3 = tid[CERT_EUICC = make_cert(ID_EUICC,kem_pk(SK_EUICC_KEM_1),tag_eu,pq_sign((ID_EUICC,kem_pk(SK_EUICC_KEM_1),tag_eu),SK_ROOT_CA)),PK_EUICC_EPH = kem_pk(SK_EUICC_EPH_1),eChalS = eChal_2,devS = devMain[],!1 = @sid_1]
 serverNonce_3 = serverNonce[CERT_EUICC = make_cert(ID_EUICC,kem_pk(SK_EUICC_KEM_1),tag_eu,pq_sign((ID_EUICC,kem_pk(SK_EUICC_KEM_1),tag_eu),SK_ROOT_CA)),PK_EUICC_EPH = kem_pk(SK_EUICC_EPH_1),eChalS = eChal_2,devS = devMain[],!1 = @sid_1]
-@occ49_1 = @occ49[Finished_EU_in = kem_mac(get_KM(kemtls_kdf(get_ss(kem_encaps(kem_pk(SK_EUICC_EPH_1))),get_ss(kem_encaps(kem_pk(SK_SMDP_KEM))),get_ss(kem_encaps(kem_pk(SK_EUICC_KEM_1))),eChal_2,serverNonce_3,get_ct(kem_encaps(kem_pk(SK_EUICC_EPH_1))),get_ct(kem_encaps(kem_pk(SK_EUICC_KEM_1))),get_ct(kem_encaps(kem_pk(SK_SMDP_KEM))),make_cert(ID_EUICC,kem_pk(SK_EUICC_KEM_1),tag_eu,pq_sign((ID_EUICC,kem_pk(SK_EUICC_KEM_1),tag_eu),SK_ROOT_CA)),make_cert(ID_SMDP,kem_pk(SK_SMDP_KEM),tag_dp,pq_sign((ID_SMDP,kem_pk(SK_SMDP_KEM),tag_dp),SK_ROOT_CA)),ID_EUICC,ID_SMDP)),transcript_hash(eChal_2,serverNonce_3,get_ct(kem_encaps(kem_pk(SK_EUICC_EPH_1))),get_ct(kem_encaps(kem_pk(SK_EUICC_KEM_1))),get_ct(kem_encaps(kem_pk(SK_SMDP_KEM))),make_cert(ID_EUICC,kem_pk(SK_EUICC_KEM_1),tag_eu,pq_sign((ID_EUICC,kem_pk(SK_EUICC_KEM_1),tag_eu),SK_ROOT_CA)),make_cert(ID_SMDP,kem_pk(SK_SMDP_KEM),tag_dp,pq_sign((ID_SMDP,kem_pk(SK_SMDP_KEM),tag_dp),SK_ROOT_CA)))),CT_SERVER = get_ct(kem_encaps(kem_pk(SK_SMDP_KEM))),tid2 = tid_3,devS2 = devMain[],CERT_EUICC = make_cert(ID_EUICC,kem_pk(SK_EUICC_KEM_1),tag_eu,pq_sign((ID_EUICC,kem_pk(SK_EUICC_KEM_1),tag_eu),SK_ROOT_CA)),PK_EUICC_EPH = kem_pk(SK_EUICC_EPH_1),eChalS = eChal_2,devS = devMain[],!1 = @sid_1]
-@occ103_1 = @occ103[CERT_SMDP_1 = make_cert(ID_SMDP,kem_pk(SK_SMDP_KEM),tag_dp,pq_sign((ID_SMDP,kem_pk(SK_SMDP_KEM),tag_dp),SK_ROOT_CA)),serverNonce_2 = serverNonce_3,CT_CLIENT_2 = get_ct(kem_encaps(kem_pk(SK_EUICC_KEM_1))),CT_EPH_2 = get_ct(kem_encaps(kem_pk(SK_EUICC_EPH_1))),tid_2 = tid_3,dev_in2 = devMain[],dev_in = devMain[],!1 = @sid]
-RESULT inj-event(SMDP_AUTH_OK(dev_3,tid_3)) ==> inj-event(EUICC_SENT_FINISHED(dev_3,tid_3,transcript_2)) is true.
+@occ50_1 = @occ50[Finished_EU_in = kem_mac(get_KM(kemtls_kdf(get_ss(kem_encaps(kem_pk(SK_EUICC_EPH_1))),get_ss(kem_encaps(kem_pk(SK_SMDP_KEM))),get_ss(kem_encaps(kem_pk(SK_EUICC_KEM_1))),eChal_2,serverNonce_3,get_ct(kem_encaps(kem_pk(SK_EUICC_EPH_1))),get_ct(kem_encaps(kem_pk(SK_EUICC_KEM_1))),get_ct(kem_encaps(kem_pk(SK_SMDP_KEM))),make_cert(ID_EUICC,kem_pk(SK_EUICC_KEM_1),tag_eu,pq_sign((ID_EUICC,kem_pk(SK_EUICC_KEM_1),tag_eu),SK_ROOT_CA)),make_cert(ID_SMDP,kem_pk(SK_SMDP_KEM),tag_dp,pq_sign((ID_SMDP,kem_pk(SK_SMDP_KEM),tag_dp),SK_ROOT_CA)),ID_EUICC,ID_SMDP)),transcript_hash(eChal_2,serverNonce_3,get_ct(kem_encaps(kem_pk(SK_EUICC_EPH_1))),get_ct(kem_encaps(kem_pk(SK_EUICC_KEM_1))),get_ct(kem_encaps(kem_pk(SK_SMDP_KEM))),make_cert(ID_EUICC,kem_pk(SK_EUICC_KEM_1),tag_eu,pq_sign((ID_EUICC,kem_pk(SK_EUICC_KEM_1),tag_eu),SK_ROOT_CA)),make_cert(ID_SMDP,kem_pk(SK_SMDP_KEM),tag_dp,pq_sign((ID_SMDP,kem_pk(SK_SMDP_KEM),tag_dp),SK_ROOT_CA)))),CT_SERVER = get_ct(kem_encaps(kem_pk(SK_SMDP_KEM))),tid2 = tid_3,devS2 = devMain[],CERT_EUICC = make_cert(ID_EUICC,kem_pk(SK_EUICC_KEM_1),tag_eu,pq_sign((ID_EUICC,kem_pk(SK_EUICC_KEM_1),tag_eu),SK_ROOT_CA)),PK_EUICC_EPH = kem_pk(SK_EUICC_EPH_1),eChalS = eChal_2,devS = devMain[],!1 = @sid_1]
+@occ104_1 = @occ104[CERT_SMDP_1 = make_cert(ID_SMDP,kem_pk(SK_SMDP_KEM),tag_dp,pq_sign((ID_SMDP,kem_pk(SK_SMDP_KEM),tag_dp),SK_ROOT_CA)),serverNonce_2 = serverNonce_3,CT_CLIENT_2 = get_ct(kem_encaps(kem_pk(SK_EUICC_KEM_1))),CT_EPH_2 = get_ct(kem_encaps(kem_pk(SK_EUICC_EPH_1))),tid_2 = tid_3,dev_in2 = devMain[],dev_in = devMain[],!1 = @sid]
+RESULT inj-event(SMDP_AUTH_OK(dev_3,tid_3,s,ID_EUICC)) ==> inj-event(EUICC_SENT_FINISHED(dev_3,tid_3,transcript_2)) is true.
 -- Query inj-event(SMDP_KEY(dev_3,tid_3,k)) ==> inj-event(EUICC_KEY(dev_3,tid_3,k)) in process 1.
 Translating the process into Horn clauses...
 Completing...
+200 rules inserted. Base: 182 rules (77 with conclusion selected). Queue: 14 rules.
 Starting query inj-event(SMDP_KEY(dev_3,tid_3,k)) ==> inj-event(EUICC_KEY(dev_3,tid_3,k))
-goal reachable: b-inj-event(EUICC_KEY(devMain[],tid_3,kemtls_kdf(get_ss(kem_encaps(kem_pk(SK_EUICC_EPH_1))),get_ss(kem_encaps(kem_pk(SK_SMDP_KEM))),get_ss(kem_encaps(kem_pk(SK_EUICC_KEM_1))),eChal_2,serverNonce_3,get_ct(kem_encaps(kem_pk(SK_EUICC_EPH_1))),get_ct(kem_encaps(kem_pk(SK_EUICC_KEM_1))),get_ct(kem_encaps(kem_pk(SK_SMDP_KEM))),make_cert(ID_EUICC,kem_pk(SK_EUICC_KEM_1),tag_eu,pq_sign((ID_EUICC,kem_pk(SK_EUICC_KEM_1),tag_eu),SK_ROOT_CA)),make_cert(ID_SMDP,kem_pk(SK_SMDP_KEM),tag_dp,pq_sign((ID_SMDP,kem_pk(SK_SMDP_KEM),tag_dp),SK_ROOT_CA)),ID_EUICC,ID_SMDP)),@occ104_1) -> inj-event(SMDP_KEY(devMain[],tid_3,kemtls_kdf(get_ss(kem_encaps(kem_pk(SK_EUICC_EPH_1))),get_ss(kem_encaps(kem_pk(SK_SMDP_KEM))),get_ss(kem_encaps(kem_pk(SK_EUICC_KEM_1))),eChal_2,serverNonce_3,get_ct(kem_encaps(kem_pk(SK_EUICC_EPH_1))),get_ct(kem_encaps(kem_pk(SK_EUICC_KEM_1))),get_ct(kem_encaps(kem_pk(SK_SMDP_KEM))),make_cert(ID_EUICC,kem_pk(SK_EUICC_KEM_1),tag_eu,pq_sign((ID_EUICC,kem_pk(SK_EUICC_KEM_1),tag_eu),SK_ROOT_CA)),make_cert(ID_SMDP,kem_pk(SK_SMDP_KEM),tag_dp,pq_sign((ID_SMDP,kem_pk(SK_SMDP_KEM),tag_dp),SK_ROOT_CA)),ID_EUICC,ID_SMDP)),@occ45_1)
+goal reachable: b-inj-event(EUICC_KEY(devMain[],tid_3,kemtls_kdf(get_ss(kem_encaps(kem_pk(SK_EUICC_EPH_1))),get_ss(kem_encaps(kem_pk(SK_SMDP_KEM))),get_ss(kem_encaps(kem_pk(SK_EUICC_KEM_1))),eChal_2,serverNonce_3,get_ct(kem_encaps(kem_pk(SK_EUICC_EPH_1))),get_ct(kem_encaps(kem_pk(SK_EUICC_KEM_1))),get_ct(kem_encaps(kem_pk(SK_SMDP_KEM))),make_cert(ID_EUICC,kem_pk(SK_EUICC_KEM_1),tag_eu,pq_sign((ID_EUICC,kem_pk(SK_EUICC_KEM_1),tag_eu),SK_ROOT_CA)),make_cert(ID_SMDP,kem_pk(SK_SMDP_KEM),tag_dp,pq_sign((ID_SMDP,kem_pk(SK_SMDP_KEM),tag_dp),SK_ROOT_CA)),ID_EUICC,ID_SMDP)),@occ105_1) -> inj-event(SMDP_KEY(devMain[],tid_3,kemtls_kdf(get_ss(kem_encaps(kem_pk(SK_EUICC_EPH_1))),get_ss(kem_encaps(kem_pk(SK_SMDP_KEM))),get_ss(kem_encaps(kem_pk(SK_EUICC_KEM_1))),eChal_2,serverNonce_3,get_ct(kem_encaps(kem_pk(SK_EUICC_EPH_1))),get_ct(kem_encaps(kem_pk(SK_EUICC_KEM_1))),get_ct(kem_encaps(kem_pk(SK_SMDP_KEM))),make_cert(ID_EUICC,kem_pk(SK_EUICC_KEM_1),tag_eu,pq_sign((ID_EUICC,kem_pk(SK_EUICC_KEM_1),tag_eu),SK_ROOT_CA)),make_cert(ID_SMDP,kem_pk(SK_SMDP_KEM),tag_dp,pq_sign((ID_SMDP,kem_pk(SK_SMDP_KEM),tag_dp),SK_ROOT_CA)),ID_EUICC,ID_SMDP)),@occ46_1)
+The hypothesis occurs strictly before the conclusion.
+Abbreviations:
+SK_EUICC_KEM_1 = SK_EUICC_KEM[!1 = @sid]
+SK_EUICC_EPH_1 = SK_EUICC_EPH[!1 = @sid]
+eChal_2 = eChal_1[dev_in = devMain[],!1 = @sid]
+tid_3 = tid[CERT_EUICC = make_cert(ID_EUICC,kem_pk(SK_EUICC_KEM_1),tag_eu,pq_sign((ID_EUICC,kem_pk(SK_EUICC_KEM_1),tag_eu),SK_ROOT_CA)),PK_EUICC_EPH = kem_pk(SK_EUICC_EPH_1),eChalS = eChal_2,devS = devMain[],!1 = @sid_1]
+serverNonce_3 = serverNonce[CERT_EUICC = make_cert(ID_EUICC,kem_pk(SK_EUICC_KEM_1),tag_eu,pq_sign((ID_EUICC,kem_pk(SK_EUICC_KEM_1),tag_eu),SK_ROOT_CA)),PK_EUICC_EPH = kem_pk(SK_EUICC_EPH_1),eChalS = eChal_2,devS = devMain[],!1 = @sid_1]
+@occ46_1 = @occ46[Finished_EU_in = kem_mac(get_KM(kemtls_kdf(get_ss(kem_encaps(kem_pk(SK_EUICC_EPH_1))),get_ss(kem_encaps(kem_pk(SK_SMDP_KEM))),get_ss(kem_encaps(kem_pk(SK_EUICC_KEM_1))),eChal_2,serverNonce_3,get_ct(kem_encaps(kem_pk(SK_EUICC_EPH_1))),get_ct(kem_encaps(kem_pk(SK_EUICC_KEM_1))),get_ct(kem_encaps(kem_pk(SK_SMDP_KEM))),make_cert(ID_EUICC,kem_pk(SK_EUICC_KEM_1),tag_eu,pq_sign((ID_EUICC,kem_pk(SK_EUICC_KEM_1),tag_eu),SK_ROOT_CA)),make_cert(ID_SMDP,kem_pk(SK_SMDP_KEM),tag_dp,pq_sign((ID_SMDP,kem_pk(SK_SMDP_KEM),tag_dp),SK_ROOT_CA)),ID_EUICC,ID_SMDP)),transcript_hash(eChal_2,serverNonce_3,get_ct(kem_encaps(kem_pk(SK_EUICC_EPH_1))),get_ct(kem_encaps(kem_pk(SK_EUICC_KEM_1))),get_ct(kem_encaps(kem_pk(SK_SMDP_KEM))),make_cert(ID_EUICC,kem_pk(SK_EUICC_KEM_1),tag_eu,pq_sign((ID_EUICC,kem_pk(SK_EUICC_KEM_1),tag_eu),SK_ROOT_CA)),make_cert(ID_SMDP,kem_pk(SK_SMDP_KEM),tag_dp,pq_sign((ID_SMDP,kem_pk(SK_SMDP_KEM),tag_dp),SK_ROOT_CA)))),CT_SERVER = get_ct(kem_encaps(kem_pk(SK_SMDP_KEM))),tid2 = tid_3,devS2 = devMain[],CERT_EUICC = make_cert(ID_EUICC,kem_pk(SK_EUICC_KEM_1),tag_eu,pq_sign((ID_EUICC,kem_pk(SK_EUICC_KEM_1),tag_eu),SK_ROOT_CA)),PK_EUICC_EPH = kem_pk(SK_EUICC_EPH_1),eChalS = eChal_2,devS = devMain[],!1 = @sid_1]
+@occ105_1 = @occ105[CERT_SMDP_1 = make_cert(ID_SMDP,kem_pk(SK_SMDP_KEM),tag_dp,pq_sign((ID_SMDP,kem_pk(SK_SMDP_KEM),tag_dp),SK_ROOT_CA)),serverNonce_2 = serverNonce_3,CT_CLIENT_2 = get_ct(kem_encaps(kem_pk(SK_EUICC_KEM_1))),CT_EPH_2 = get_ct(kem_encaps(kem_pk(SK_EUICC_EPH_1))),tid_2 = tid_3,dev_in2 = devMain[],dev_in = devMain[],!1 = @sid]
+RESULT inj-event(SMDP_KEY(dev_3,tid_3,k)) ==> inj-event(EUICC_KEY(dev_3,tid_3,k)) is true.
+-- Query not attacker_p1(secret_payload[]) in process 1.
+Translating the process into Horn clauses...
+Completing...
+200 rules inserted. Base: 182 rules (77 with conclusion selected). Queue: 8 rules.
+Starting query not attacker_p1(secret_payload[])
+RESULT not attacker_p1(secret_payload[]) is true.
+-- Query not attacker_p1(secret_payload[]) in process 1.
+Translating the process into Horn clauses...
+Completing...
+200 rules inserted. Base: 182 rules (77 with conclusion selected). Queue: 8 rules.
+Starting query not attacker_p1(secret_payload[])
+RESULT not attacker_p1(secret_payload[]) is true.
+-- Query inj-event(SMDP_VERIFIED_FINISHED(dev_3,tid_3,transcript_2)) ==> inj-event(EUICC_SENT_FINISHED(dev_3,tid_3,transcript_2)) in process 1.
+Translating the process into Horn clauses...
+Completing...
+200 rules inserted. Base: 182 rules (77 with conclusion selected). Queue: 14 rules.
+Starting query inj-event(SMDP_VERIFIED_FINISHED(dev_3,tid_3,transcript_2)) ==> inj-event(EUICC_SENT_FINISHED(dev_3,tid_3,transcript_2))
+goal reachable: b-inj-event(EUICC_SENT_FINISHED(devMain[],tid_3,transcript_hash(eChal_2,serverNonce_3,get_ct(kem_encaps(kem_pk(SK_EUICC_EPH_1))),get_ct(kem_encaps(kem_pk(SK_EUICC_KEM_1))),get_ct(kem_encaps(kem_pk(SK_SMDP_KEM))),make_cert(ID_EUICC,kem_pk(SK_EUICC_KEM_1),tag_eu,pq_sign((ID_EUICC,kem_pk(SK_EUICC_KEM_1),tag_eu),SK_ROOT_CA)),make_cert(ID_SMDP,kem_pk(SK_SMDP_KEM),tag_dp,pq_sign((ID_SMDP,kem_pk(SK_SMDP_KEM),tag_dp),SK_ROOT_CA)))),@occ104_2) -> inj-event(SMDP_VERIFIED_FINISHED(devMain[],tid_3,transcript_hash(eChal_2,serverNonce_3,get_ct(kem_encaps(kem_pk(SK_EUICC_EPH_1))),get_ct(kem_encaps(kem_pk(SK_EUICC_KEM_1))),get_ct(kem_encaps(kem_pk(SK_SMDP_KEM))),make_cert(ID_EUICC,kem_pk(SK_EUICC_KEM_1),tag_eu,pq_sign((ID_EUICC,kem_pk(SK_EUICC_KEM_1),tag_eu),SK_ROOT_CA)),make_cert(ID_SMDP,kem_pk(SK_SMDP_KEM),tag_dp,pq_sign((ID_SMDP,kem_pk(SK_SMDP_KEM),tag_dp),SK_ROOT_CA)))),@occ45_1)
 The hypothesis occurs strictly before the conclusion.
 Abbreviations:
 SK_EUICC_KEM_1 = SK_EUICC_KEM[!1 = @sid]
@@ -274,16 +315,41 @@ eChal_2 = eChal_1[dev_in = devMain[],!1 = @sid]
 tid_3 = tid[CERT_EUICC = make_cert(ID_EUICC,kem_pk(SK_EUICC_KEM_1),tag_eu,pq_sign((ID_EUICC,kem_pk(SK_EUICC_KEM_1),tag_eu),SK_ROOT_CA)),PK_EUICC_EPH = kem_pk(SK_EUICC_EPH_1),eChalS = eChal_2,devS = devMain[],!1 = @sid_1]
 serverNonce_3 = serverNonce[CERT_EUICC = make_cert(ID_EUICC,kem_pk(SK_EUICC_KEM_1),tag_eu,pq_sign((ID_EUICC,kem_pk(SK_EUICC_KEM_1),tag_eu),SK_ROOT_CA)),PK_EUICC_EPH = kem_pk(SK_EUICC_EPH_1),eChalS = eChal_2,devS = devMain[],!1 = @sid_1]
 @occ45_1 = @occ45[Finished_EU_in = kem_mac(get_KM(kemtls_kdf(get_ss(kem_encaps(kem_pk(SK_EUICC_EPH_1))),get_ss(kem_encaps(kem_pk(SK_SMDP_KEM))),get_ss(kem_encaps(kem_pk(SK_EUICC_KEM_1))),eChal_2,serverNonce_3,get_ct(kem_encaps(kem_pk(SK_EUICC_EPH_1))),get_ct(kem_encaps(kem_pk(SK_EUICC_KEM_1))),get_ct(kem_encaps(kem_pk(SK_SMDP_KEM))),make_cert(ID_EUICC,kem_pk(SK_EUICC_KEM_1),tag_eu,pq_sign((ID_EUICC,kem_pk(SK_EUICC_KEM_1),tag_eu),SK_ROOT_CA)),make_cert(ID_SMDP,kem_pk(SK_SMDP_KEM),tag_dp,pq_sign((ID_SMDP,kem_pk(SK_SMDP_KEM),tag_dp),SK_ROOT_CA)),ID_EUICC,ID_SMDP)),transcript_hash(eChal_2,serverNonce_3,get_ct(kem_encaps(kem_pk(SK_EUICC_EPH_1))),get_ct(kem_encaps(kem_pk(SK_EUICC_KEM_1))),get_ct(kem_encaps(kem_pk(SK_SMDP_KEM))),make_cert(ID_EUICC,kem_pk(SK_EUICC_KEM_1),tag_eu,pq_sign((ID_EUICC,kem_pk(SK_EUICC_KEM_1),tag_eu),SK_ROOT_CA)),make_cert(ID_SMDP,kem_pk(SK_SMDP_KEM),tag_dp,pq_sign((ID_SMDP,kem_pk(SK_SMDP_KEM),tag_dp),SK_ROOT_CA)))),CT_SERVER = get_ct(kem_encaps(kem_pk(SK_SMDP_KEM))),tid2 = tid_3,devS2 = devMain[],CERT_EUICC = make_cert(ID_EUICC,kem_pk(SK_EUICC_KEM_1),tag_eu,pq_sign((ID_EUICC,kem_pk(SK_EUICC_KEM_1),tag_eu),SK_ROOT_CA)),PK_EUICC_EPH = kem_pk(SK_EUICC_EPH_1),eChalS = eChal_2,devS = devMain[],!1 = @sid_1]
-@occ104_1 = @occ104[CERT_SMDP_1 = make_cert(ID_SMDP,kem_pk(SK_SMDP_KEM),tag_dp,pq_sign((ID_SMDP,kem_pk(SK_SMDP_KEM),tag_dp),SK_ROOT_CA)),serverNonce_2 = serverNonce_3,CT_CLIENT_2 = get_ct(kem_encaps(kem_pk(SK_EUICC_KEM_1))),CT_EPH_2 = get_ct(kem_encaps(kem_pk(SK_EUICC_EPH_1))),tid_2 = tid_3,dev_in2 = devMain[],dev_in = devMain[],!1 = @sid]
-RESULT inj-event(SMDP_KEY(dev_3,tid_3,k)) ==> inj-event(EUICC_KEY(dev_3,tid_3,k)) is true.
+@occ104_2 = @occ104_1[CERT_SMDP_1 = make_cert(ID_SMDP,kem_pk(SK_SMDP_KEM),tag_dp,pq_sign((ID_SMDP,kem_pk(SK_SMDP_KEM),tag_dp),SK_ROOT_CA)),serverNonce_2 = serverNonce_3,CT_CLIENT_2 = get_ct(kem_encaps(kem_pk(SK_EUICC_KEM_1))),CT_EPH_2 = get_ct(kem_encaps(kem_pk(SK_EUICC_EPH_1))),tid_2 = tid_3,dev_in2 = devMain[],dev_in = devMain[],!1 = @sid]
+RESULT inj-event(SMDP_VERIFIED_FINISHED(dev_3,tid_3,transcript_2)) ==> inj-event(EUICC_SENT_FINISHED(dev_3,tid_3,transcript_2)) is true.
+-- Query inj-event(EUICC_VERIFIED_FINISHED(dev_3,tid_3,transcript_2)) ==> inj-event(SMDP_SENT_FINISHED(dev_3,tid_3,transcript_2)) in process 1.
+Translating the process into Horn clauses...
+Completing...
+200 rules inserted. Base: 181 rules (77 with conclusion selected). Queue: 13 rules.
+Starting query inj-event(EUICC_VERIFIED_FINISHED(dev_3,tid_3,transcript_2)) ==> inj-event(SMDP_SENT_FINISHED(dev_3,tid_3,transcript_2))
+goal reachable: b-inj-event(SMDP_SENT_FINISHED(devMain[],tid_3,transcript_hash(eChal_2,serverNonce_3,get_ct(kem_encaps(kem_pk(SK_EUICC_EPH_1))),get_ct(kem_encaps(kem_pk(SK_EUICC_KEM_1))),get_ct(kem_encaps(kem_pk(SK_SMDP_KEM))),make_cert(ID_EUICC,kem_pk(SK_EUICC_KEM_1),tag_eu,pq_sign((ID_EUICC,kem_pk(SK_EUICC_KEM_1),tag_eu),SK_ROOT_CA)),make_cert(ID_SMDP,kem_pk(SK_SMDP_KEM),tag_dp,pq_sign((ID_SMDP,kem_pk(SK_SMDP_KEM),tag_dp),SK_ROOT_CA)))),@occ48_1) -> inj-event(EUICC_VERIFIED_FINISHED(devMain[],tid_3,transcript_hash(eChal_2,serverNonce_3,get_ct(kem_encaps(kem_pk(SK_EUICC_EPH_1))),get_ct(kem_encaps(kem_pk(SK_EUICC_KEM_1))),get_ct(kem_encaps(kem_pk(SK_SMDP_KEM))),make_cert(ID_EUICC,kem_pk(SK_EUICC_KEM_1),tag_eu,pq_sign((ID_EUICC,kem_pk(SK_EUICC_KEM_1),tag_eu),SK_ROOT_CA)),make_cert(ID_SMDP,kem_pk(SK_SMDP_KEM),tag_dp,pq_sign((ID_SMDP,kem_pk(SK_SMDP_KEM),tag_dp),SK_ROOT_CA)))),@occ112_1)
+The hypothesis occurs strictly before the conclusion.
+Abbreviations:
+SK_EUICC_KEM_1 = SK_EUICC_KEM[!1 = @sid]
+SK_EUICC_EPH_1 = SK_EUICC_EPH[!1 = @sid]
+eChal_2 = eChal_1[dev_in = devMain[],!1 = @sid]
+tid_3 = tid[CERT_EUICC = make_cert(ID_EUICC,kem_pk(SK_EUICC_KEM_1),tag_eu,pq_sign((ID_EUICC,kem_pk(SK_EUICC_KEM_1),tag_eu),SK_ROOT_CA)),PK_EUICC_EPH = kem_pk(SK_EUICC_EPH_1),eChalS = eChal_2,devS = devMain[],!1 = @sid_1]
+serverNonce_3 = serverNonce[CERT_EUICC = make_cert(ID_EUICC,kem_pk(SK_EUICC_KEM_1),tag_eu,pq_sign((ID_EUICC,kem_pk(SK_EUICC_KEM_1),tag_eu),SK_ROOT_CA)),PK_EUICC_EPH = kem_pk(SK_EUICC_EPH_1),eChalS = eChal_2,devS = devMain[],!1 = @sid_1]
+@occ112_1 = @occ112[Finished_DP_in = kem_mac(get_KM(kemtls_kdf(get_ss(kem_encaps(kem_pk(SK_EUICC_EPH_1))),get_ss(kem_encaps(kem_pk(SK_SMDP_KEM))),get_ss(kem_encaps(kem_pk(SK_EUICC_KEM_1))),eChal_2,serverNonce_3,get_ct(kem_encaps(kem_pk(SK_EUICC_EPH_1))),get_ct(kem_encaps(kem_pk(SK_EUICC_KEM_1))),get_ct(kem_encaps(kem_pk(SK_SMDP_KEM))),make_cert(ID_EUICC,kem_pk(SK_EUICC_KEM_1),tag_eu,pq_sign((ID_EUICC,kem_pk(SK_EUICC_KEM_1),tag_eu),SK_ROOT_CA)),make_cert(ID_SMDP,kem_pk(SK_SMDP_KEM),tag_dp,pq_sign((ID_SMDP,kem_pk(SK_SMDP_KEM),tag_dp),SK_ROOT_CA)),ID_EUICC,ID_SMDP)),(transcript_hash(eChal_2,serverNonce_3,get_ct(kem_encaps(kem_pk(SK_EUICC_EPH_1))),get_ct(kem_encaps(kem_pk(SK_EUICC_KEM_1))),get_ct(kem_encaps(kem_pk(SK_SMDP_KEM))),make_cert(ID_EUICC,kem_pk(SK_EUICC_KEM_1),tag_eu,pq_sign((ID_EUICC,kem_pk(SK_EUICC_KEM_1),tag_eu),SK_ROOT_CA)),make_cert(ID_SMDP,kem_pk(SK_SMDP_KEM),tag_dp,pq_sign((ID_SMDP,kem_pk(SK_SMDP_KEM),tag_dp),SK_ROOT_CA))),kem_mac(get_KM(kemtls_kdf(get_ss(kem_encaps(kem_pk(SK_EUICC_EPH_1))),get_ss(kem_encaps(kem_pk(SK_SMDP_KEM))),get_ss(kem_encaps(kem_pk(SK_EUICC_KEM_1))),eChal_2,serverNonce_3,get_ct(kem_encaps(kem_pk(SK_EUICC_EPH_1))),get_ct(kem_encaps(kem_pk(SK_EUICC_KEM_1))),get_ct(kem_encaps(kem_pk(SK_SMDP_KEM))),make_cert(ID_EUICC,kem_pk(SK_EUICC_KEM_1),tag_eu,pq_sign((ID_EUICC,kem_pk(SK_EUICC_KEM_1),tag_eu),SK_ROOT_CA)),make_cert(ID_SMDP,kem_pk(SK_SMDP_KEM),tag_dp,pq_sign((ID_SMDP,kem_pk(SK_SMDP_KEM),tag_dp),SK_ROOT_CA)),ID_EUICC,ID_SMDP)),transcript_hash(eChal_2,serverNonce_3,get_ct(kem_encaps(kem_pk(SK_EUICC_EPH_1))),get_ct(kem_encaps(kem_pk(SK_EUICC_KEM_1))),get_ct(kem_encaps(kem_pk(SK_SMDP_KEM))),make_cert(ID_EUICC,kem_pk(SK_EUICC_KEM_1),tag_eu,pq_sign((ID_EUICC,kem_pk(SK_EUICC_KEM_1),tag_eu),SK_ROOT_CA)),make_cert(ID_SMDP,kem_pk(SK_SMDP_KEM),tag_dp,pq_sign((ID_SMDP,kem_pk(SK_SMDP_KEM),tag_dp),SK_ROOT_CA)))))),tid3_1 = tid_3,dev_in3 = devMain[],CERT_SMDP_1 = make_cert(ID_SMDP,kem_pk(SK_SMDP_KEM),tag_dp,pq_sign((ID_SMDP,kem_pk(SK_SMDP_KEM),tag_dp),SK_ROOT_CA)),serverNonce_2 = serverNonce_3,CT_CLIENT_2 = get_ct(kem_encaps(kem_pk(SK_EUICC_KEM_1))),CT_EPH_2 = get_ct(kem_encaps(kem_pk(SK_EUICC_EPH_1))),tid_2 = tid_3,dev_in2 = devMain[],dev_in = devMain[],!1 = @sid]
+@occ48_1 = @occ48[Finished_EU_in = kem_mac(get_KM(kemtls_kdf(get_ss(kem_encaps(kem_pk(SK_EUICC_EPH_1))),get_ss(kem_encaps(kem_pk(SK_SMDP_KEM))),get_ss(kem_encaps(kem_pk(SK_EUICC_KEM_1))),eChal_2,serverNonce_3,get_ct(kem_encaps(kem_pk(SK_EUICC_EPH_1))),get_ct(kem_encaps(kem_pk(SK_EUICC_KEM_1))),get_ct(kem_encaps(kem_pk(SK_SMDP_KEM))),make_cert(ID_EUICC,kem_pk(SK_EUICC_KEM_1),tag_eu,pq_sign((ID_EUICC,kem_pk(SK_EUICC_KEM_1),tag_eu),SK_ROOT_CA)),make_cert(ID_SMDP,kem_pk(SK_SMDP_KEM),tag_dp,pq_sign((ID_SMDP,kem_pk(SK_SMDP_KEM),tag_dp),SK_ROOT_CA)),ID_EUICC,ID_SMDP)),transcript_hash(eChal_2,serverNonce_3,get_ct(kem_encaps(kem_pk(SK_EUICC_EPH_1))),get_ct(kem_encaps(kem_pk(SK_EUICC_KEM_1))),get_ct(kem_encaps(kem_pk(SK_SMDP_KEM))),make_cert(ID_EUICC,kem_pk(SK_EUICC_KEM_1),tag_eu,pq_sign((ID_EUICC,kem_pk(SK_EUICC_KEM_1),tag_eu),SK_ROOT_CA)),make_cert(ID_SMDP,kem_pk(SK_SMDP_KEM),tag_dp,pq_sign((ID_SMDP,kem_pk(SK_SMDP_KEM),tag_dp),SK_ROOT_CA)))),CT_SERVER = get_ct(kem_encaps(kem_pk(SK_SMDP_KEM))),tid2 = tid_3,devS2 = devMain[],CERT_EUICC = make_cert(ID_EUICC,kem_pk(SK_EUICC_KEM_1),tag_eu,pq_sign((ID_EUICC,kem_pk(SK_EUICC_KEM_1),tag_eu),SK_ROOT_CA)),PK_EUICC_EPH = kem_pk(SK_EUICC_EPH_1),eChalS = eChal_2,devS = devMain[],!1 = @sid_1]
+RESULT inj-event(EUICC_VERIFIED_FINISHED(dev_3,tid_3,transcript_2)) ==> inj-event(SMDP_SENT_FINISHED(dev_3,tid_3,transcript_2)) is true.
 
 --------------------------------------------------------------
 Verification summary:
 
-Query inj-event(EUICC_AUTH_OK(dev_3,tid_3)) ==> inj-event(SMDP_BEGIN(dev_3,tid_3)) is true.
+Query inj-event(EUICC_AUTH_OK(dev_3,tid_3,e,s,ID_SMDP)) ==> inj-event(SMDP_SENT_AUTH(dev_3,tid_3,e,s,ID_SMDP)) is true.
 
-Query inj-event(SMDP_AUTH_OK(dev_3,tid_3)) ==> inj-event(EUICC_SENT_FINISHED(dev_3,tid_3,transcript_2)) is true.
+Query inj-event(SMDP_AUTH_OK(dev_3,tid_3,s,ID_EUICC)) ==> inj-event(EUICC_SENT_FINISHED(dev_3,tid_3,transcript_2)) is true.
 
 Query inj-event(SMDP_KEY(dev_3,tid_3,k)) ==> inj-event(EUICC_KEY(dev_3,tid_3,k)) is true.
 
+Query not attacker_p1(secret_payload[]) is true.
+
+Query not attacker_p1(secret_payload[]) is true.
+
+Query inj-event(SMDP_VERIFIED_FINISHED(dev_3,tid_3,transcript_2)) ==> inj-event(EUICC_SENT_FINISHED(dev_3,tid_3,transcript_2)) is true.
+
+Query inj-event(EUICC_VERIFIED_FINISHED(dev_3,tid_3,transcript_2)) ==> inj-event(SMDP_SENT_FINISHED(dev_3,tid_3,transcript_2)) is true.
+
 --------------------------------------------------------------
+

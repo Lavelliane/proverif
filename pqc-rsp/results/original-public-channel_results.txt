@@ -1,0 +1,422 @@
+Linear part:
+dh(x,dh_pk(y)) = dh(y,dh_pk(x))
+Completing equations...
+Completed equations:
+dh(x,dh_pk(y)) = dh(y,dh_pk(x))
+Convergent part: No equation.
+Process 0 (that is, the initial process):
+{1}let PK_CI: K_t = pk(SK_CI) in
+{2}out(c, PK_CI);
+{3}new devMain: Id_t;
+(
+    {4}!
+    {5}let dev: Id_t = devMain in
+    {6}let profile: Profile_t = secret_profile in
+    {7}let PK_DPauth: K_t = pk(SK_DPauth) in
+    {8}let id: Id_t = ID_SMDP in
+    {9}let role: Tag_t = tag_dp in
+    {10}let Cert_DPauth: Cert_t = signcert(id,PK_DPauth,role,SK_CI) in
+    {11}out(c, Cert_DPauth);
+    {12}in(ES9, (devS: Id_t,eChalS: Nonce_t));
+    {13}if (devS = dev) then
+    {14}new tid: Tid_t;
+    {15}new sChal: Nonce_t;
+    {16}event SMDP_AUTH_BEGIN(devS,tid,eChalS,sChal);
+    {17}let serverSigned: bitstring = mk_serverSigned1(tid,devS,eChalS,sChal,ID_SMDP) in
+    {18}let serverSig: Sig_t = sign(serverSigned,SK_DPauth) in
+    {19}event SMDP_SENT_SERVER1(devS,tid,eChalS,sChal,ID_SMDP);
+    {20}out(ES9, (devS,tid,serverSigned,serverSig,Cert_DPauth));
+    {21}in(ES9, (devS2: Id_t,clientSigned: bitstring,clientSig: Sig_t,Cert_EUICC: Cert_t));
+    {22}if (devS2 = dev) then
+    {23}let (id_eu: Id_t,PK_EUICC: K_t,role_eu: Tag_t) = checkcert(Cert_EUICC,PK_CI) in
+    {24}if (id_eu = ID_EUICC) then
+    {25}if (role_eu = tag_eu) then
+    {26}let decoded_cli: bitstring = checksign(clientSig,PK_EUICC) in
+    {27}let mk_clientSigned1(tid2: Tid_t,id_eu2: Id_t,sChal2: Nonce_t) = decoded_cli in
+    {28}if (id_eu2 = id_eu) then
+    {29}if (tid2 = tid) then
+    {30}if (sChal2 = sChal) then
+    {31}event SMDP_AUTH_OK(dev,tid,sChal,id_eu);
+    {32}let serverSigned2: bitstring = mk_serverSigned2(tid) in
+    {33}let serverSig2: Sig_t = sign(serverSigned2,SK_DPauth) in
+    {34}event SMDP_PREPARE_DOWNLOAD(dev,tid);
+    {35}out(ES9, (dev,tid,serverSig2));
+    {36}in(ES9, (devS3: Id_t,pk_eu_eph: DHKey_t,clientSig2: Sig_t));
+    {37}if (devS3 = dev) then
+    {38}let decoded_cli2: bitstring = checksign(clientSig2,PK_EUICC) in
+    {39}let mk_clientSigned2(tid3: Tid_t,pk_check: DHKey_t) = decoded_cli2 in
+    {40}if (tid3 = tid) then
+    {41}if (pk_check = pk_eu_eph) then
+    {42}new sk_dp_eph: DHKey_t;
+    {43}let pk_dp_eph: DHKey_t = dh_pk(sk_dp_eph) in
+    {44}let shs: SharedSecret_t = dh(sk_dp_eph,pk_eu_eph) in
+    {45}let k_enc: SymKey_t = kdf_enc(shs) in
+    {46}let k_mac: SymKey_t = kdf_mac(shs) in
+    {47}event SMDP_DH_COMPLETE(dev,tid,pk_eu_eph,pk_dp_eph);
+    {48}let encrypted_profile: bitstring = senc(profile,k_enc) in
+    {49}let bpp_body: bitstring = mk_bpp_body(tid,pk_eu_eph,pk_dp_eph,encrypted_profile) in
+    {50}let bpp_mac: MAC_t = mac(bpp_body,k_mac) in
+    {51}let serverSigned3: bitstring = mk_serverSigned3(tid,pk_dp_eph) in
+    {52}let serverSig3: Sig_t = sign(serverSigned3,SK_DPauth) in
+    {53}event SMDP_BOUND_PROFILE(dev,tid,profile);
+    {54}out(ES9, (dev,bpp_body,bpp_mac,serverSig3));
+    {55}in(ES9, (devS4: Id_t,tid_result: Tid_t,iccid: ICCID_t,installSig: Sig_t));
+    {56}if (devS4 = dev) then
+    {57}if (tid_result = tid) then
+    {58}let decoded_result: bitstring = checksign(installSig,PK_EUICC) in
+    {59}let mk_install_result(tid_check: Tid_t,iccid_check: ICCID_t) = decoded_result in
+    {60}if (tid_check = tid) then
+    {61}if (iccid_check = iccid) then
+    {62}event SMDP_INSTALL_CONFIRMED(dev,tid,iccid)
+) | (
+    {63}!
+    {64}let dev_1: Id_t = devMain in
+    {65}out(LPA2EUICC, (t_getChal,ID_LPA,dev_1));
+    {66}in(LPA2EUICC, (dev_ch: Id_t,eChal: Nonce_t));
+    {67}if (dev_ch = dev_1) then
+    {68}out(ES9, (dev_1,eChal));
+    {69}in(ES9, (dev2: Id_t,tid_1: Tid_t,serverSigned_1: bitstring,serverSig_1: Sig_t,Cert_DPauth_1: Cert_t));
+    {70}if (dev2 = dev_1) then
+    {71}out(LPA2EUICC, (dev_1,tid_1,serverSigned_1,serverSig_1,Cert_DPauth_1));
+    {72}in(LPA2EUICC, (dev3: Id_t,clientSigned_1: bitstring,clientSig_1: Sig_t,Cert_EUICC_1: Cert_t));
+    {73}if (dev3 = dev_1) then
+    {74}out(ES9, (dev_1,clientSigned_1,clientSig_1,Cert_EUICC_1));
+    {75}in(ES9, (dev4: Id_t,tid4: Tid_t,serverSig2_1: Sig_t));
+    {76}if (dev4 = dev_1) then
+    {77}if (tid4 = tid_1) then
+    {78}out(LPA2EUICC, (t_prepDownload,dev_1,tid_1,serverSig2_1));
+    {79}in(LPA2EUICC, (dev5: Id_t,pk_eu_eph_1: DHKey_t,clientSig2_1: Sig_t));
+    {80}if (dev5 = dev_1) then
+    {81}out(ES9, (dev_1,pk_eu_eph_1,clientSig2_1));
+    {82}in(ES9, (dev6: Id_t,bpp_body_1: bitstring,bpp_mac_1: MAC_t,serverSig3_1: Sig_t));
+    {83}if (dev6 = dev_1) then
+    {84}out(LPA2EUICC, (t_loadBPP,dev_1,bpp_body_1,bpp_mac_1,serverSig3_1));
+    {85}in(LPA2EUICC, (dev7: Id_t,tid_result_1: Tid_t,iccid_1: ICCID_t,installSig_1: Sig_t));
+    {86}if (dev7 = dev_1) then
+    {87}out(ES9, (dev_1,tid_result_1,iccid_1,installSig_1))
+) | (
+    {88}!
+    {89}let dev_2: Id_t = devMain in
+    {90}new SK_EUICC: K_t;
+    {91}let PK_EUICC_1: K_t = pk(SK_EUICC) in
+    {92}let id_1: Id_t = ID_EUICC in
+    {93}let role_1: Tag_t = tag_eu in
+    {94}let Cert_EUICC_2: Cert_t = signcert(id_1,PK_EUICC_1,role_1,SK_CI) in
+    {95}out(c, Cert_EUICC_2);
+    {96}in(LPA2EUICC, (=t_getChal,=ID_LPA,dev_in: Id_t));
+    {97}if (dev_in = dev_2) then
+    {98}new eChal_1: Nonce_t;
+    {99}out(LPA2EUICC, (dev_2,eChal_1));
+    {100}in(LPA2EUICC, (dev_srv: Id_t,tid_2: Tid_t,serverSigned_2: bitstring,serverSig_2: Sig_t,Cert_DPauth_2: Cert_t));
+    {101}if (dev_srv = dev_2) then
+    {102}let (id_dp: Id_t,PK_DPauth_1: K_t,role_dp: Tag_t) = checkcert(Cert_DPauth_2,PK_CI) in
+    {103}if (id_dp = ID_SMDP) then
+    {104}if (role_dp = tag_dp) then
+    {105}let decoded_srv: bitstring = checksign(serverSig_2,PK_DPauth_1) in
+    {106}let mk_serverSigned1(tidU: Tid_t,devU: Id_t,eChalU: Nonce_t,sChalU: Nonce_t,smdpAddr: Id_t) = decoded_srv in
+    {107}if (devU = dev_2) then
+    {108}if (tidU = tid_2) then
+    {109}if (eChalU = eChal_1) then
+    {110}if (smdpAddr = ID_SMDP) then
+    {111}event EUICC_AUTH_OK(dev_2,tid_2,eChal_1,sChalU,id_dp);
+    {112}let clientSigned_2: bitstring = mk_clientSigned1(tid_2,ID_EUICC,sChalU) in
+    {113}let clientSig_2: Sig_t = sign(clientSigned_2,SK_EUICC) in
+    {114}out(LPA2EUICC, (dev_2,clientSigned_2,clientSig_2,Cert_EUICC_2));
+    {115}in(LPA2EUICC, (=t_prepDownload,dev_pd: Id_t,tid_pd: Tid_t,serverSig2_2: Sig_t));
+    {116}if (dev_pd = dev_2) then
+    {117}if (tid_pd = tid_2) then
+    {118}let decoded_srv2: bitstring = checksign(serverSig2_2,PK_DPauth_1) in
+    {119}let mk_serverSigned2(tid_check_1: Tid_t) = decoded_srv2 in
+    {120}if (tid_check_1 = tid_2) then
+    {121}new sk_eu_eph: DHKey_t;
+    {122}let pk_eu_eph_2: DHKey_t = dh_pk(sk_eu_eph) in
+    {123}event EUICC_PREPARE_DOWNLOAD_OK(dev_2,tid_2,pk_eu_eph_2);
+    {124}let clientSigned2: bitstring = mk_clientSigned2(tid_2,pk_eu_eph_2) in
+    {125}let clientSig2_2: Sig_t = sign(clientSigned2,SK_EUICC) in
+    {126}out(LPA2EUICC, (dev_2,pk_eu_eph_2,clientSig2_2));
+    {127}in(LPA2EUICC, (=t_loadBPP,dev_bpp: Id_t,bpp_body_2: bitstring,bpp_mac_2: MAC_t,serverSig3_2: Sig_t));
+    {128}if (dev_bpp = dev_2) then
+    {129}let decoded_srv3: bitstring = checksign(serverSig3_2,PK_DPauth_1) in
+    {130}let mk_serverSigned3(tid_bpp: Tid_t,pk_dp_eph_1: DHKey_t) = decoded_srv3 in
+    {131}if (tid_bpp = tid_2) then
+    {132}let shs_1: SharedSecret_t = dh(sk_eu_eph,pk_dp_eph_1) in
+    {133}let k_enc_1: SymKey_t = kdf_enc(shs_1) in
+    {134}let k_mac_1: SymKey_t = kdf_mac(shs_1) in
+    {135}event EUICC_DH_COMPLETE(dev_2,tid_2,pk_eu_eph_2,pk_dp_eph_1);
+    {136}let mk_bpp_body(=tid_2,=pk_eu_eph_2,=pk_dp_eph_1,encrypted_profile_1: bitstring) = bpp_body_2 in
+    {137}if (verify_mac(bpp_mac_2,bpp_body_2,k_mac_1) = true) then
+    {138}let profile_1: Profile_t = sdec(encrypted_profile_1,k_enc_1) in
+    {139}new iccid_2: ICCID_t;
+    {140}event EUICC_PROFILE_INSTALLED(dev_2,tid_2,profile_1,iccid_2);
+    {141}let installResult: bitstring = mk_install_result(tid_2,iccid_2) in
+    {142}let installSig_2: Sig_t = sign(installResult,SK_EUICC) in
+    {143}out(LPA2EUICC, (dev_2,tid_2,iccid_2,installSig_2))
+) | (
+    {144}phase 1;
+    {145}out(c, SK_DPauth)
+)
+
+--  Process 1 (that is, process 0, with let moved downwards):
+{1}let PK_CI: K_t = pk(SK_CI) in
+{2}out(c, PK_CI);
+{3}new devMain: Id_t;
+(
+    {4}!
+    {9}let role: Tag_t = tag_dp in
+    {8}let id: Id_t = ID_SMDP in
+    {7}let PK_DPauth: K_t = pk(SK_DPauth) in
+    {10}let Cert_DPauth: Cert_t = signcert(id,PK_DPauth,role,SK_CI) in
+    {11}out(c, Cert_DPauth);
+    {12}in(ES9, (devS: Id_t,eChalS: Nonce_t));
+    {5}let dev: Id_t = devMain in
+    {13}if (devS = dev) then
+    {14}new tid: Tid_t;
+    {15}new sChal: Nonce_t;
+    {16}event SMDP_AUTH_BEGIN(devS,tid,eChalS,sChal);
+    {19}event SMDP_SENT_SERVER1(devS,tid,eChalS,sChal,ID_SMDP);
+    {17}let serverSigned: bitstring = mk_serverSigned1(tid,devS,eChalS,sChal,ID_SMDP) in
+    {18}let serverSig: Sig_t = sign(serverSigned,SK_DPauth) in
+    {20}out(ES9, (devS,tid,serverSigned,serverSig,Cert_DPauth));
+    {21}in(ES9, (devS2: Id_t,clientSigned: bitstring,clientSig: Sig_t,Cert_EUICC: Cert_t));
+    {22}if (devS2 = dev) then
+    {23}let (id_eu: Id_t,PK_EUICC: K_t,role_eu: Tag_t) = checkcert(Cert_EUICC,PK_CI) in
+    {24}if (id_eu = ID_EUICC) then
+    {25}if (role_eu = tag_eu) then
+    {26}let decoded_cli: bitstring = checksign(clientSig,PK_EUICC) in
+    {27}let mk_clientSigned1(tid2: Tid_t,id_eu2: Id_t,sChal2: Nonce_t) = decoded_cli in
+    {28}if (id_eu2 = id_eu) then
+    {29}if (tid2 = tid) then
+    {30}if (sChal2 = sChal) then
+    {31}event SMDP_AUTH_OK(dev,tid,sChal,id_eu);
+    {34}event SMDP_PREPARE_DOWNLOAD(dev,tid);
+    {32}let serverSigned2: bitstring = mk_serverSigned2(tid) in
+    {33}let serverSig2: Sig_t = sign(serverSigned2,SK_DPauth) in
+    {35}out(ES9, (dev,tid,serverSig2));
+    {36}in(ES9, (devS3: Id_t,pk_eu_eph: DHKey_t,clientSig2: Sig_t));
+    {37}if (devS3 = dev) then
+    {38}let decoded_cli2: bitstring = checksign(clientSig2,PK_EUICC) in
+    {39}let mk_clientSigned2(tid3: Tid_t,pk_check: DHKey_t) = decoded_cli2 in
+    {40}if (tid3 = tid) then
+    {41}if (pk_check = pk_eu_eph) then
+    {42}new sk_dp_eph: DHKey_t;
+    {43}let pk_dp_eph: DHKey_t = dh_pk(sk_dp_eph) in
+    {47}event SMDP_DH_COMPLETE(dev,tid,pk_eu_eph,pk_dp_eph);
+    {6}let profile: Profile_t = secret_profile in
+    {53}event SMDP_BOUND_PROFILE(dev,tid,profile);
+    {51}let serverSigned3: bitstring = mk_serverSigned3(tid,pk_dp_eph) in
+    {52}let serverSig3: Sig_t = sign(serverSigned3,SK_DPauth) in
+    {44}let shs: SharedSecret_t = dh(sk_dp_eph,pk_eu_eph) in
+    {45}let k_enc: SymKey_t = kdf_enc(shs) in
+    {48}let encrypted_profile: bitstring = senc(profile,k_enc) in
+    {49}let bpp_body: bitstring = mk_bpp_body(tid,pk_eu_eph,pk_dp_eph,encrypted_profile) in
+    {46}let k_mac: SymKey_t = kdf_mac(shs) in
+    {50}let bpp_mac: MAC_t = mac(bpp_body,k_mac) in
+    {54}out(ES9, (dev,bpp_body,bpp_mac,serverSig3));
+    {55}in(ES9, (devS4: Id_t,tid_result: Tid_t,iccid: ICCID_t,installSig: Sig_t));
+    {56}if (devS4 = dev) then
+    {57}if (tid_result = tid) then
+    {58}let decoded_result: bitstring = checksign(installSig,PK_EUICC) in
+    {59}let mk_install_result(tid_check: Tid_t,iccid_check: ICCID_t) = decoded_result in
+    {60}if (tid_check = tid) then
+    {61}if (iccid_check = iccid) then
+    {62}event SMDP_INSTALL_CONFIRMED(dev,tid,iccid)
+) | (
+    {63}!
+    {64}let dev_1: Id_t = devMain in
+    {65}out(LPA2EUICC, (t_getChal,ID_LPA,dev_1));
+    {66}in(LPA2EUICC, (dev_ch: Id_t,eChal: Nonce_t));
+    {67}if (dev_ch = dev_1) then
+    {68}out(ES9, (dev_1,eChal));
+    {69}in(ES9, (dev2: Id_t,tid_1: Tid_t,serverSigned_1: bitstring,serverSig_1: Sig_t,Cert_DPauth_1: Cert_t));
+    {70}if (dev2 = dev_1) then
+    {71}out(LPA2EUICC, (dev_1,tid_1,serverSigned_1,serverSig_1,Cert_DPauth_1));
+    {72}in(LPA2EUICC, (dev3: Id_t,clientSigned_1: bitstring,clientSig_1: Sig_t,Cert_EUICC_1: Cert_t));
+    {73}if (dev3 = dev_1) then
+    {74}out(ES9, (dev_1,clientSigned_1,clientSig_1,Cert_EUICC_1));
+    {75}in(ES9, (dev4: Id_t,tid4: Tid_t,serverSig2_1: Sig_t));
+    {76}if (dev4 = dev_1) then
+    {77}if (tid4 = tid_1) then
+    {78}out(LPA2EUICC, (t_prepDownload,dev_1,tid_1,serverSig2_1));
+    {79}in(LPA2EUICC, (dev5: Id_t,pk_eu_eph_1: DHKey_t,clientSig2_1: Sig_t));
+    {80}if (dev5 = dev_1) then
+    {81}out(ES9, (dev_1,pk_eu_eph_1,clientSig2_1));
+    {82}in(ES9, (dev6: Id_t,bpp_body_1: bitstring,bpp_mac_1: MAC_t,serverSig3_1: Sig_t));
+    {83}if (dev6 = dev_1) then
+    {84}out(LPA2EUICC, (t_loadBPP,dev_1,bpp_body_1,bpp_mac_1,serverSig3_1));
+    {85}in(LPA2EUICC, (dev7: Id_t,tid_result_1: Tid_t,iccid_1: ICCID_t,installSig_1: Sig_t));
+    {86}if (dev7 = dev_1) then
+    {87}out(ES9, (dev_1,tid_result_1,iccid_1,installSig_1))
+) | (
+    {88}!
+    {90}new SK_EUICC: K_t;
+    {93}let role_1: Tag_t = tag_eu in
+    {92}let id_1: Id_t = ID_EUICC in
+    {91}let PK_EUICC_1: K_t = pk(SK_EUICC) in
+    {94}let Cert_EUICC_2: Cert_t = signcert(id_1,PK_EUICC_1,role_1,SK_CI) in
+    {95}out(c, Cert_EUICC_2);
+    {96}in(LPA2EUICC, (=t_getChal,=ID_LPA,dev_in: Id_t));
+    {89}let dev_2: Id_t = devMain in
+    {97}if (dev_in = dev_2) then
+    {98}new eChal_1: Nonce_t;
+    {99}out(LPA2EUICC, (dev_2,eChal_1));
+    {100}in(LPA2EUICC, (dev_srv: Id_t,tid_2: Tid_t,serverSigned_2: bitstring,serverSig_2: Sig_t,Cert_DPauth_2: Cert_t));
+    {101}if (dev_srv = dev_2) then
+    {102}let (id_dp: Id_t,PK_DPauth_1: K_t,role_dp: Tag_t) = checkcert(Cert_DPauth_2,PK_CI) in
+    {103}if (id_dp = ID_SMDP) then
+    {104}if (role_dp = tag_dp) then
+    {105}let decoded_srv: bitstring = checksign(serverSig_2,PK_DPauth_1) in
+    {106}let mk_serverSigned1(tidU: Tid_t,devU: Id_t,eChalU: Nonce_t,sChalU: Nonce_t,smdpAddr: Id_t) = decoded_srv in
+    {107}if (devU = dev_2) then
+    {108}if (tidU = tid_2) then
+    {109}if (eChalU = eChal_1) then
+    {110}if (smdpAddr = ID_SMDP) then
+    {111}event EUICC_AUTH_OK(dev_2,tid_2,eChal_1,sChalU,id_dp);
+    {112}let clientSigned_2: bitstring = mk_clientSigned1(tid_2,ID_EUICC,sChalU) in
+    {113}let clientSig_2: Sig_t = sign(clientSigned_2,SK_EUICC) in
+    {114}out(LPA2EUICC, (dev_2,clientSigned_2,clientSig_2,Cert_EUICC_2));
+    {115}in(LPA2EUICC, (=t_prepDownload,dev_pd: Id_t,tid_pd: Tid_t,serverSig2_2: Sig_t));
+    {116}if (dev_pd = dev_2) then
+    {117}if (tid_pd = tid_2) then
+    {118}let decoded_srv2: bitstring = checksign(serverSig2_2,PK_DPauth_1) in
+    {119}let mk_serverSigned2(tid_check_1: Tid_t) = decoded_srv2 in
+    {120}if (tid_check_1 = tid_2) then
+    {121}new sk_eu_eph: DHKey_t;
+    {122}let pk_eu_eph_2: DHKey_t = dh_pk(sk_eu_eph) in
+    {123}event EUICC_PREPARE_DOWNLOAD_OK(dev_2,tid_2,pk_eu_eph_2);
+    {124}let clientSigned2: bitstring = mk_clientSigned2(tid_2,pk_eu_eph_2) in
+    {125}let clientSig2_2: Sig_t = sign(clientSigned2,SK_EUICC) in
+    {126}out(LPA2EUICC, (dev_2,pk_eu_eph_2,clientSig2_2));
+    {127}in(LPA2EUICC, (=t_loadBPP,dev_bpp: Id_t,bpp_body_2: bitstring,bpp_mac_2: MAC_t,serverSig3_2: Sig_t));
+    {128}if (dev_bpp = dev_2) then
+    {129}let decoded_srv3: bitstring = checksign(serverSig3_2,PK_DPauth_1) in
+    {130}let mk_serverSigned3(tid_bpp: Tid_t,pk_dp_eph_1: DHKey_t) = decoded_srv3 in
+    {131}if (tid_bpp = tid_2) then
+    {135}event EUICC_DH_COMPLETE(dev_2,tid_2,pk_eu_eph_2,pk_dp_eph_1);
+    {136}let mk_bpp_body(=tid_2,=pk_eu_eph_2,=pk_dp_eph_1,encrypted_profile_1: bitstring) = bpp_body_2 in
+    {132}let shs_1: SharedSecret_t = dh(sk_eu_eph,pk_dp_eph_1) in
+    {134}let k_mac_1: SymKey_t = kdf_mac(shs_1) in
+    {137}if (verify_mac(bpp_mac_2,bpp_body_2,k_mac_1) = true) then
+    {133}let k_enc_1: SymKey_t = kdf_enc(shs_1) in
+    {138}let profile_1: Profile_t = sdec(encrypted_profile_1,k_enc_1) in
+    {139}new iccid_2: ICCID_t;
+    {140}event EUICC_PROFILE_INSTALLED(dev_2,tid_2,profile_1,iccid_2);
+    {141}let installResult: bitstring = mk_install_result(tid_2,iccid_2) in
+    {142}let installSig_2: Sig_t = sign(installResult,SK_EUICC) in
+    {143}out(LPA2EUICC, (dev_2,tid_2,iccid_2,installSig_2))
+) | (
+    {144}phase 1;
+    {145}out(c, SK_DPauth)
+)
+
+-- Query inj-event(EUICC_AUTH_OK(dev_3,tid_3,e,s,ID_SMDP)) ==> inj-event(SMDP_SENT_SERVER1(dev_3,tid_3,e,s,ID_SMDP)) in process 1.
+Translating the process into Horn clauses...
+Completing...
+200 rules inserted. Base: 195 rules (80 with conclusion selected). Queue: 23 rules.
+400 rules inserted. Base: 265 rules (92 with conclusion selected). Queue: 4 rules.
+600 rules inserted. Base: 337 rules (109 with conclusion selected). Queue: 16 rules.
+Starting query inj-event(EUICC_AUTH_OK(dev_3,tid_3,e,s,ID_SMDP)) ==> inj-event(SMDP_SENT_SERVER1(dev_3,tid_3,e,s,ID_SMDP))
+goal reachable: attacker(serverSigned_3) && b-inj-event(SMDP_SENT_SERVER1(devMain[],tid_3,eChal_2,sChal_1,ID_SMDP),@occ19_1) -> inj-event(EUICC_AUTH_OK(devMain[],tid_3,eChal_2,sChal_1,ID_SMDP),@occ111_1)
+The 1st hypothesis occurs before the conclusion.
+The 2nd hypothesis occurs strictly before the conclusion.
+Abbreviations:
+eChal_2 = eChal_1[dev_in = devMain[],!1 = @sid]
+tid_3 = tid[eChalS = eChal_2,devS = devMain[],!1 = @sid_1]
+sChal_1 = sChal[eChalS = eChal_2,devS = devMain[],!1 = @sid_1]
+@occ111_1 = @occ111[Cert_DPauth_2 = signcert(ID_SMDP,pk(SK_DPauth),tag_dp,SK_CI),serverSig_2 = sign(mk_serverSigned1(tid_3,devMain[],eChal_2,sChal_1,ID_SMDP),SK_DPauth),serverSigned_2 = serverSigned_3,tid_2 = tid_3,dev_srv = devMain[],dev_in = devMain[],!1 = @sid]
+@occ19_1 = @occ19[eChalS = eChal_2,devS = devMain[],!1 = @sid_1]
+RESULT inj-event(EUICC_AUTH_OK(dev_3,tid_3,e,s,ID_SMDP)) ==> inj-event(SMDP_SENT_SERVER1(dev_3,tid_3,e,s,ID_SMDP)) is true.
+-- Query inj-event(SMDP_AUTH_OK(dev_3,tid_3,s,ID_EUICC)) ==> inj-event(EUICC_AUTH_OK(dev_3,tid_3,e,s,ID_SMDP)) in process 1.
+Translating the process into Horn clauses...
+Completing...
+200 rules inserted. Base: 196 rules (80 with conclusion selected). Queue: 24 rules.
+400 rules inserted. Base: 268 rules (93 with conclusion selected). Queue: 6 rules.
+600 rules inserted. Base: 338 rules (109 with conclusion selected). Queue: 11 rules.
+Starting query inj-event(SMDP_AUTH_OK(dev_3,tid_3,s,ID_EUICC)) ==> inj-event(EUICC_AUTH_OK(dev_3,tid_3,e,s,ID_SMDP))
+goal reachable: attacker(clientSigned_3) && b-inj-event(EUICC_AUTH_OK(devMain[],tid_3,eChal_2,sChal_1,ID_SMDP),@occ111_2) && attacker(serverSigned_3) -> inj-event(SMDP_AUTH_OK(devMain[],tid_3,sChal_1,ID_EUICC),@occ31_1)
+The 1st, 3rd hypotheses occur before the conclusion.
+The 2nd hypothesis occurs strictly before the conclusion.
+Abbreviations:
+eChal_2 = eChal_1[dev_in = devMain[],!1 = @sid]
+tid_3 = tid[eChalS = eChal_2,devS = devMain[],!1 = @sid_1]
+sChal_1 = sChal[eChalS = eChal_2,devS = devMain[],!1 = @sid_1]
+SK_EUICC_1 = SK_EUICC[!1 = @sid]
+@occ31_1 = @occ31[Cert_EUICC = signcert(ID_EUICC,pk(SK_EUICC_1),tag_eu,SK_CI),clientSig = sign(mk_clientSigned1(tid_3,ID_EUICC,sChal_1),SK_EUICC_1),clientSigned = clientSigned_3,devS2 = devMain[],eChalS = eChal_2,devS = devMain[],!1 = @sid_1]
+@occ111_2 = @occ111_1[Cert_DPauth_2 = signcert(ID_SMDP,pk(SK_DPauth),tag_dp,SK_CI),serverSig_2 = sign(mk_serverSigned1(tid_3,devMain[],eChal_2,sChal_1,ID_SMDP),SK_DPauth),serverSigned_2 = serverSigned_3,tid_2 = tid_3,dev_srv = devMain[],dev_in = devMain[],!1 = @sid]
+RESULT inj-event(SMDP_AUTH_OK(dev_3,tid_3,s,ID_EUICC)) ==> inj-event(EUICC_AUTH_OK(dev_3,tid_3,e,s,ID_SMDP)) is true.
+-- Query not attacker_p1(secret_profile[]) in process 1.
+Translating the process into Horn clauses...
+Completing...
+200 rules inserted. Base: 194 rules (80 with conclusion selected). Queue: 22 rules.
+400 rules inserted. Base: 260 rules (93 with conclusion selected). Queue: 6 rules.
+600 rules inserted. Base: 320 rules (108 with conclusion selected). Queue: 8 rules.
+Starting query not attacker_p1(secret_profile[])
+RESULT not attacker_p1(secret_profile[]) is true.
+-- Query not attacker_p1(secret_profile[]) in process 1.
+Translating the process into Horn clauses...
+Completing...
+200 rules inserted. Base: 194 rules (80 with conclusion selected). Queue: 22 rules.
+400 rules inserted. Base: 260 rules (93 with conclusion selected). Queue: 6 rules.
+600 rules inserted. Base: 320 rules (108 with conclusion selected). Queue: 8 rules.
+Starting query not attacker_p1(secret_profile[])
+RESULT not attacker_p1(secret_profile[]) is true.
+-- Query inj-event(EUICC_PROFILE_INSTALLED(dev_3,tid_3,profile_2,iccid_3)) ==> inj-event(SMDP_BOUND_PROFILE(dev_3,tid_3,profile_2)) in process 1.
+Translating the process into Horn clauses...
+Completing...
+200 rules inserted. Base: 196 rules (80 with conclusion selected). Queue: 24 rules.
+400 rules inserted. Base: 268 rules (93 with conclusion selected). Queue: 8 rules.
+600 rules inserted. Base: 316 rules (108 with conclusion selected). Queue: 36 rules.
+Starting query inj-event(EUICC_PROFILE_INSTALLED(dev_3,tid_3,profile_2,iccid_3)) ==> inj-event(SMDP_BOUND_PROFILE(dev_3,tid_3,profile_2))
+goal reachable: b-inj-event(SMDP_BOUND_PROFILE(devMain[],tid_3,secret_profile[]),@occ53_1) && attacker(clientSigned_3) && attacker(serverSigned_3) -> inj-event(EUICC_PROFILE_INSTALLED(devMain[],tid_3,secret_profile[],iccid_3),@occ140_1)
+The 1st hypothesis occurs strictly before the conclusion.
+The 2nd, 3rd hypotheses occur before the conclusion.
+Abbreviations:
+eChal_2 = eChal_1[dev_in = devMain[],!1 = @sid]
+tid_3 = tid[eChalS = eChal_2,devS = devMain[],!1 = @sid_1]
+sChal_1 = sChal[eChalS = eChal_2,devS = devMain[],!1 = @sid_1]
+sk_eu_eph_1 = sk_eu_eph[serverSig2_2 = sign(mk_serverSigned2(tid_3),SK_DPauth),tid_pd = tid_3,dev_pd = devMain[],Cert_DPauth_2 = signcert(ID_SMDP,pk(SK_DPauth),tag_dp,SK_CI),serverSig_2 = sign(mk_serverSigned1(tid_3,devMain[],eChal_2,sChal_1,ID_SMDP),SK_DPauth),serverSigned_2 = serverSigned_3,tid_2 = tid_3,dev_srv = devMain[],dev_in = devMain[],!1 = @sid]
+SK_EUICC_1 = SK_EUICC[!1 = @sid]
+sk_dp_eph_1 = sk_dp_eph[clientSig2 = sign(mk_clientSigned2(tid_3,dh_pk(sk_eu_eph_1)),SK_EUICC_1),pk_eu_eph = dh_pk(sk_eu_eph_1),devS3 = devMain[],Cert_EUICC = signcert(ID_EUICC,pk(SK_EUICC_1),tag_eu,SK_CI),clientSig = sign(mk_clientSigned1(tid_3,ID_EUICC,sChal_1),SK_EUICC_1),clientSigned = clientSigned_3,devS2 = devMain[],eChalS = eChal_2,devS = devMain[],!1 = @sid_1]
+iccid_3 = iccid_2[serverSig3_2 = sign(mk_serverSigned3(tid_3,dh_pk(sk_dp_eph_1)),SK_DPauth),bpp_mac_2 = mac(mk_bpp_body(tid_3,dh_pk(sk_eu_eph_1),dh_pk(sk_dp_eph_1),senc(secret_profile[],kdf_enc(dh(sk_dp_eph_1,dh_pk(sk_eu_eph_1))))),kdf_mac(dh(sk_dp_eph_1,dh_pk(sk_eu_eph_1)))),bpp_body_2 = mk_bpp_body(tid_3,dh_pk(sk_eu_eph_1),dh_pk(sk_dp_eph_1),senc(secret_profile[],kdf_enc(dh(sk_dp_eph_1,dh_pk(sk_eu_eph_1))))),dev_bpp = devMain[],serverSig2_2 = sign(mk_serverSigned2(tid_3),SK_DPauth),tid_pd = tid_3,dev_pd = devMain[],Cert_DPauth_2 = signcert(ID_SMDP,pk(SK_DPauth),tag_dp,SK_CI),serverSig_2 = sign(mk_serverSigned1(tid_3,devMain[],eChal_2,sChal_1,ID_SMDP),SK_DPauth),serverSigned_2 = serverSigned_3,tid_2 = tid_3,dev_srv = devMain[],dev_in = devMain[],!1 = @sid]
+@occ140_1 = @occ140[serverSig3_2 = sign(mk_serverSigned3(tid_3,dh_pk(sk_dp_eph_1)),SK_DPauth),bpp_mac_2 = mac(mk_bpp_body(tid_3,dh_pk(sk_eu_eph_1),dh_pk(sk_dp_eph_1),senc(secret_profile[],kdf_enc(dh(sk_dp_eph_1,dh_pk(sk_eu_eph_1))))),kdf_mac(dh(sk_dp_eph_1,dh_pk(sk_eu_eph_1)))),bpp_body_2 = mk_bpp_body(tid_3,dh_pk(sk_eu_eph_1),dh_pk(sk_dp_eph_1),senc(secret_profile[],kdf_enc(dh(sk_dp_eph_1,dh_pk(sk_eu_eph_1))))),dev_bpp = devMain[],serverSig2_2 = sign(mk_serverSigned2(tid_3),SK_DPauth),tid_pd = tid_3,dev_pd = devMain[],Cert_DPauth_2 = signcert(ID_SMDP,pk(SK_DPauth),tag_dp,SK_CI),serverSig_2 = sign(mk_serverSigned1(tid_3,devMain[],eChal_2,sChal_1,ID_SMDP),SK_DPauth),serverSigned_2 = serverSigned_3,tid_2 = tid_3,dev_srv = devMain[],dev_in = devMain[],!1 = @sid]
+@occ53_1 = @occ53[clientSig2 = sign(mk_clientSigned2(tid_3,dh_pk(sk_eu_eph_1)),SK_EUICC_1),pk_eu_eph = dh_pk(sk_eu_eph_1),devS3 = devMain[],Cert_EUICC = signcert(ID_EUICC,pk(SK_EUICC_1),tag_eu,SK_CI),clientSig = sign(mk_clientSigned1(tid_3,ID_EUICC,sChal_1),SK_EUICC_1),clientSigned = clientSigned_3,devS2 = devMain[],eChalS = eChal_2,devS = devMain[],!1 = @sid_1]
+RESULT inj-event(EUICC_PROFILE_INSTALLED(dev_3,tid_3,profile_2,iccid_3)) ==> inj-event(SMDP_BOUND_PROFILE(dev_3,tid_3,profile_2)) is true.
+-- Query inj-event(SMDP_INSTALL_CONFIRMED(dev_3,tid_3,iccid_3)) ==> inj-event(EUICC_PROFILE_INSTALLED(dev_3,tid_3,profile_2,iccid_3)) in process 1.
+Translating the process into Horn clauses...
+Completing...
+200 rules inserted. Base: 195 rules (80 with conclusion selected). Queue: 23 rules.
+400 rules inserted. Base: 262 rules (93 with conclusion selected). Queue: 7 rules.
+600 rules inserted. Base: 317 rules (108 with conclusion selected). Queue: 11 rules.
+Starting query inj-event(SMDP_INSTALL_CONFIRMED(dev_3,tid_3,iccid_3)) ==> inj-event(EUICC_PROFILE_INSTALLED(dev_3,tid_3,profile_2,iccid_3))
+goal reachable: b-inj-event(EUICC_PROFILE_INSTALLED(devMain[],tid_3,secret_profile[],iccid_3),@occ140_2) && attacker(clientSigned_3) && attacker(serverSigned_3) && attacker(serverSigned_4) && attacker(clientSigned_4) -> inj-event(SMDP_INSTALL_CONFIRMED(devMain[],tid_3,iccid_3),@occ62_1)
+The 1st hypothesis occurs strictly before the conclusion.
+The 2nd, 3rd, 4th, 5th hypotheses occur before the conclusion.
+Abbreviations:
+eChal_2 = eChal_1[dev_in = devMain[],!1 = @sid]
+tid_3 = tid[eChalS = eChal_2,devS = devMain[],!1 = @sid_1]
+sChal_1 = sChal[eChalS = eChal_2,devS = devMain[],!1 = @sid_1]
+sk_eu_eph_1 = sk_eu_eph[serverSig2_2 = sign(mk_serverSigned2(tid_3),SK_DPauth),tid_pd = tid_3,dev_pd = devMain[],Cert_DPauth_2 = signcert(ID_SMDP,pk(SK_DPauth),tag_dp,SK_CI),serverSig_2 = sign(mk_serverSigned1(tid_3,devMain[],eChal_2,sChal_1,ID_SMDP),SK_DPauth),serverSigned_2 = serverSigned_3,tid_2 = tid_3,dev_srv = devMain[],dev_in = devMain[],!1 = @sid]
+SK_EUICC_1 = SK_EUICC[!1 = @sid]
+sk_dp_eph_1 = sk_dp_eph[clientSig2 = sign(mk_clientSigned2(tid_3,dh_pk(sk_eu_eph_1)),SK_EUICC_1),pk_eu_eph = dh_pk(sk_eu_eph_1),devS3 = devMain[],Cert_EUICC = signcert(ID_EUICC,pk(SK_EUICC_1),tag_eu,SK_CI),clientSig = sign(mk_clientSigned1(tid_3,ID_EUICC,sChal_1),SK_EUICC_1),clientSigned = clientSigned_3,devS2 = devMain[],eChalS = eChal_2,devS = devMain[],!1 = @sid_1]
+iccid_3 = iccid_2[serverSig3_2 = sign(mk_serverSigned3(tid_3,dh_pk(sk_dp_eph_1)),SK_DPauth),bpp_mac_2 = mac(mk_bpp_body(tid_3,dh_pk(sk_eu_eph_1),dh_pk(sk_dp_eph_1),senc(secret_profile[],kdf_enc(dh(sk_dp_eph_1,dh_pk(sk_eu_eph_1))))),kdf_mac(dh(sk_dp_eph_1,dh_pk(sk_eu_eph_1)))),bpp_body_2 = mk_bpp_body(tid_3,dh_pk(sk_eu_eph_1),dh_pk(sk_dp_eph_1),senc(secret_profile[],kdf_enc(dh(sk_dp_eph_1,dh_pk(sk_eu_eph_1))))),dev_bpp = devMain[],serverSig2_2 = sign(mk_serverSigned2(tid_3),SK_DPauth),tid_pd = tid_3,dev_pd = devMain[],Cert_DPauth_2 = signcert(ID_SMDP,pk(SK_DPauth),tag_dp,SK_CI),serverSig_2 = sign(mk_serverSigned1(tid_3,devMain[],eChal_2,sChal_1,ID_SMDP),SK_DPauth),serverSigned_2 = serverSigned_3,tid_2 = tid_3,dev_srv = devMain[],dev_in = devMain[],!1 = @sid]
+sk_eu_eph_2 = sk_eu_eph[serverSig2_2 = sign(mk_serverSigned2(tid_3),SK_DPauth),tid_pd = tid_3,dev_pd = devMain[],Cert_DPauth_2 = signcert(ID_SMDP,pk(SK_DPauth),tag_dp,SK_CI),serverSig_2 = sign(mk_serverSigned1(tid_3,devMain[],eChal_2,sChal_1,ID_SMDP),SK_DPauth),serverSigned_2 = serverSigned_4,tid_2 = tid_3,dev_srv = devMain[],dev_in = devMain[],!1 = @sid]
+@occ62_1 = @occ62[installSig = sign(mk_install_result(tid_3,iccid_3),SK_EUICC_1),iccid = iccid_3,tid_result = tid_3,devS4 = devMain[],clientSig2 = sign(mk_clientSigned2(tid_3,dh_pk(sk_eu_eph_2)),SK_EUICC_1),pk_eu_eph = dh_pk(sk_eu_eph_2),devS3 = devMain[],Cert_EUICC = signcert(ID_EUICC,pk(SK_EUICC_1),tag_eu,SK_CI),clientSig = sign(mk_clientSigned1(tid_3,ID_EUICC,sChal_1),SK_EUICC_1),clientSigned = clientSigned_4,devS2 = devMain[],eChalS = eChal_2,devS = devMain[],!1 = @sid_1]
+@occ140_2 = @occ140_1[serverSig3_2 = sign(mk_serverSigned3(tid_3,dh_pk(sk_dp_eph_1)),SK_DPauth),bpp_mac_2 = mac(mk_bpp_body(tid_3,dh_pk(sk_eu_eph_1),dh_pk(sk_dp_eph_1),senc(secret_profile[],kdf_enc(dh(sk_dp_eph_1,dh_pk(sk_eu_eph_1))))),kdf_mac(dh(sk_dp_eph_1,dh_pk(sk_eu_eph_1)))),bpp_body_2 = mk_bpp_body(tid_3,dh_pk(sk_eu_eph_1),dh_pk(sk_dp_eph_1),senc(secret_profile[],kdf_enc(dh(sk_dp_eph_1,dh_pk(sk_eu_eph_1))))),dev_bpp = devMain[],serverSig2_2 = sign(mk_serverSigned2(tid_3),SK_DPauth),tid_pd = tid_3,dev_pd = devMain[],Cert_DPauth_2 = signcert(ID_SMDP,pk(SK_DPauth),tag_dp,SK_CI),serverSig_2 = sign(mk_serverSigned1(tid_3,devMain[],eChal_2,sChal_1,ID_SMDP),SK_DPauth),serverSigned_2 = serverSigned_3,tid_2 = tid_3,dev_srv = devMain[],dev_in = devMain[],!1 = @sid]
+RESULT inj-event(SMDP_INSTALL_CONFIRMED(dev_3,tid_3,iccid_3)) ==> inj-event(EUICC_PROFILE_INSTALLED(dev_3,tid_3,profile_2,iccid_3)) is true.
+
+--------------------------------------------------------------
+Verification summary:
+
+Query inj-event(EUICC_AUTH_OK(dev_3,tid_3,e,s,ID_SMDP)) ==> inj-event(SMDP_SENT_SERVER1(dev_3,tid_3,e,s,ID_SMDP)) is true.
+
+Query inj-event(SMDP_AUTH_OK(dev_3,tid_3,s,ID_EUICC)) ==> inj-event(EUICC_AUTH_OK(dev_3,tid_3,e,s,ID_SMDP)) is true.
+
+Query not attacker_p1(secret_profile[]) is true.
+
+Query not attacker_p1(secret_profile[]) is true.
+
+Query inj-event(EUICC_PROFILE_INSTALLED(dev_3,tid_3,profile_2,iccid_3)) ==> inj-event(SMDP_BOUND_PROFILE(dev_3,tid_3,profile_2)) is true.
+
+Query inj-event(SMDP_INSTALL_CONFIRMED(dev_3,tid_3,iccid_3)) ==> inj-event(EUICC_PROFILE_INSTALLED(dev_3,tid_3,profile_2,iccid_3)) is true.
+
+--------------------------------------------------------------
+

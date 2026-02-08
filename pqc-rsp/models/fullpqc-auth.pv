@@ -119,6 +119,11 @@ fun get_KM(SessionKey_t) : KM_t [data].
 fun kem_mac(KM_t, bitstring) : bitstring.
 
 
+(* ===== SYMMETRIC ENCRYPTION (for session key secrecy test) ===== *)
+fun senc_test(bitstring, SessionKey_t) : bitstring.
+reduc forall m:bitstring, k:SessionKey_t; sdec_test(senc_test(m, k), k) = m.
+
+
 (* ===== MESSAGE CONSTRUCTORS ===== *)
 fun transcript_hash(
   Nonce_t, Nonce_t,
@@ -160,6 +165,24 @@ query dev:Id_t, tid:Tid_t, s:Nonce_t, transcript:bitstring;
 (* #3: Session Key Agreement - both parties derive same key *)
 query dev:Id_t, tid:Tid_t, k:SessionKey_t;
   inj-event(SMDP_KEY(dev, tid, k)) ==> inj-event(EUICC_KEY(dev, tid, k)).
+
+(* #12: Session Key Secrecy - attacker cannot recover data protected by session key *)
+free secret_payload : bitstring [private].
+query attacker(secret_payload).
+
+(* #14: Forward Secrecy - session key remains secure after long-term key compromise *)
+query attacker(secret_payload) phase 1.
+
+(* --- IMPORTANT PROPERTIES --- *)
+
+(* #10: Injective Agreement - Finished message authenticity *)
+query dev:Id_t, tid:Tid_t, transcript:bitstring;
+  inj-event(SMDP_VERIFIED_FINISHED(dev, tid, transcript)) ==>
+    inj-event(EUICC_SENT_FINISHED(dev, tid, transcript)).
+
+query dev:Id_t, tid:Tid_t, transcript:bitstring;
+  inj-event(EUICC_VERIFIED_FINISHED(dev, tid, transcript)) ==>
+    inj-event(SMDP_SENT_FINISHED(dev, tid, transcript)).
 
 
 (* =====================================================================
@@ -225,6 +248,9 @@ let EUICC(PK_ROOT:PQSigPK_t, dev:Id_t) =
     
     event EUICC_SENT_FINISHED(dev, tid, transcript);
     event EUICC_KEY(dev, tid, session_key);
+
+    (* Session key secrecy test: encrypt secret payload under session key *)
+    out(c, senc_test(secret_payload, session_key));
 
     (* Step 7: Send CT_SERVER + Finished *)
     out(LPA2EUICC, (dev, tid, CT_SERVER, Finished_EU));
@@ -366,7 +392,14 @@ process
 
   new devMain : Id_t;
   
-  ( !SMDP(PK_ROOT, devMain)
-  | !LPA(devMain)
-  | !EUICC(PK_ROOT, devMain)
+  (
+    ( !SMDP(PK_ROOT, devMain)
+    | !LPA(devMain)
+    | !EUICC(PK_ROOT, devMain)
+    )
+    
+    (* Forward Secrecy Test: leak long-term key after protocol *)
+  | ( phase 1;
+      out(c, SK_SMDP_KEM)
+    )
   )
