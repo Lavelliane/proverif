@@ -1,0 +1,405 @@
+(* =====================================================================
+   SGP.22 Consumer eSIM Provisioning - PHASE A ONLY: KEM-based Mutual Authentication
+   
+   FULL PQC STACK:
+   - Certificate chain: PQ signatures (Dilithium) throughout
+   - Handshake auth: ML-KEM (KEMTLS-style)
+   
+   Phase A: KEM-based Mutual Authentication only
+   ===================================================================== *)
+
+(* ===== CHANNELS ===== *)
+free c         : channel.           (* Public channel: certificates + relay *)
+free LPA2EUICC : channel.           (* LPA ↔ eUICC relay (public) *)
+free LPA2SMDP  : channel.           (* LPA ↔ SM-DP+ relay (public) *)
+
+
+(* ===== DATA TYPES ===== *)
+type Id_t.      (* Entity identifier *)
+type Tid_t.     (* TransactionID *)
+type Nonce_t.   (* Challenges for freshness *)
+type Cert_t.    (* Certificates *)
+type Tag_t.     (* Role tags *)
+
+(* KEM key types *)
+type KEMsk_t.   (* KEM secret key *)
+type KEMpk_t.   (* KEM public key *)
+type KEMss_t.   (* KEM shared secret *)
+
+(* Session key types *)
+type SessionKey_t.
+type KEK_t.     (* Key Encryption Key *)
+type KM_t.      (* MAC Key *)
+
+(* PQ Signature types for certificates (Dilithium) *)
+type PQSigSK_t.  (* PQ signature secret key *)
+type PQSigPK_t.  (* PQ signature public key *)
+type PQSig_t.    (* PQ signature *)
+
+
+(* ===== CONSTANTS ===== *)
+const ID_SMDP   : Id_t.
+const ID_LPA    : Id_t.
+const ID_EUICC  : Id_t.
+
+const tag_dp    : Tag_t.
+const tag_eu    : Tag_t.
+
+const t_getChal : Tag_t.
+
+(* Root CA PQ signature secret key *)
+const SK_ROOT_CA : PQSigSK_t [private].
+
+(* SM-DP+ static KEM private key *)
+const SK_SMDP_KEM : KEMsk_t [private].
+
+
+(* ===== CRYPTO: PQ SIGNATURES (Dilithium) ===== *)
+fun pq_sig_pk(PQSigSK_t) : PQSigPK_t.
+fun pq_sign(bitstring, PQSigSK_t) : PQSig_t.
+reduc forall m:bitstring, sk:PQSigSK_t;
+  pq_verify(pq_sign(m, sk), m, pq_sig_pk(sk)) = true.
+
+
+(* ===== CRYPTO: CERTIFICATES (PQ-signed, contains KEM pk) ===== *)
+fun make_cert(Id_t, KEMpk_t, Tag_t, PQSig_t) : Cert_t.
+
+reduc forall id:Id_t, kempk:KEMpk_t, role:Tag_t, sig:PQSig_t;
+  get_cert_id(make_cert(id, kempk, role, sig)) = id.
+reduc forall id:Id_t, kempk:KEMpk_t, role:Tag_t, sig:PQSig_t;
+  get_cert_kempk(make_cert(id, kempk, role, sig)) = kempk.
+reduc forall id:Id_t, kempk:KEMpk_t, role:Tag_t, sig:PQSig_t;
+  get_cert_role(make_cert(id, kempk, role, sig)) = role.
+reduc forall id:Id_t, kempk:KEMpk_t, role:Tag_t, sig:PQSig_t;
+  get_cert_sig(make_cert(id, kempk, role, sig)) = sig.
+
+letfun verify_pqc_cert(cert:Cert_t, ca_pk:PQSigPK_t) =
+  let id = get_cert_id(cert) in
+  let kempk = get_cert_kempk(cert) in
+  let role = get_cert_role(cert) in
+  let sig = get_cert_sig(cert) in
+  let cert_tbs:bitstring = (id, kempk, role) in
+  if pq_verify(sig, cert_tbs, ca_pk) = true then
+    (id, kempk, role)
+  else
+    (ID_LPA, kempk, role).
+
+letfun issue_pqc_cert(id:Id_t, kempk:KEMpk_t, role:Tag_t) =
+  let cert_tbs:bitstring = (id, kempk, role) in
+  let sig = pq_sign(cert_tbs, SK_ROOT_CA) in
+  make_cert(id, kempk, role, sig).
+
+
+(* ===== CRYPTO: ML-KEM (Deterministic, IND-CCA Secure Model) ===== *)
+type KEMcoin_t.
+
+fun kem_pk(KEMsk_t) : KEMpk_t.
+fun kem_enc(KEMpk_t, KEMcoin_t) : bitstring [data].
+fun kem_ss(KEMpk_t, KEMcoin_t) : KEMss_t [private].
+
+reduc forall sk:KEMsk_t, r:KEMcoin_t;
+  kem_dec(kem_enc(kem_pk(sk), r), sk) = kem_ss(kem_pk(sk), r).
+
+
+(* ===== KEY DERIVATION ===== *)
+fun kemtls_kdf(
+  KEMss_t, KEMss_t, KEMss_t,
+  Nonce_t, Nonce_t,
+  bitstring, bitstring, bitstring,
+  Cert_t, Cert_t,
+  Id_t, Id_t
+) : SessionKey_t.
+
+fun get_KEK(SessionKey_t) : KEK_t [data].
+fun get_KM(SessionKey_t) : KM_t [data].
+
+
+(* ===== MAC FUNCTIONS ===== *)
+fun kem_mac(KM_t, bitstring) : bitstring.
+
+
+(* ===== SYMMETRIC ENCRYPTION (for session key secrecy test) ===== *)
+fun senc_test(bitstring, SessionKey_t) : bitstring.
+reduc forall m:bitstring, k:SessionKey_t; sdec_test(senc_test(m, k), k) = m.
+
+
+(* ===== MESSAGE CONSTRUCTORS ===== *)
+fun transcript_hash(
+  Nonce_t, Nonce_t,
+  bitstring, bitstring, bitstring,
+  Cert_t, Cert_t
+) : bitstring.
+
+
+(* ===== EVENTS ===== *)
+
+event SMDP_BEGIN(Id_t, Tid_t, Nonce_t, Nonce_t).
+event SMDP_SENT_AUTH(Id_t, Tid_t, Nonce_t, Nonce_t, Id_t).
+event EUICC_AUTH_OK(Id_t, Tid_t, Nonce_t, Nonce_t, Id_t).
+event SMDP_AUTH_OK(Id_t, Tid_t, Nonce_t, Id_t).
+
+event EUICC_SENT_FINISHED(Id_t, Tid_t, bitstring).
+event SMDP_VERIFIED_FINISHED(Id_t, Tid_t, bitstring).
+event SMDP_SENT_FINISHED(Id_t, Tid_t, bitstring).
+event EUICC_VERIFIED_FINISHED(Id_t, Tid_t, bitstring).
+
+event EUICC_KEY(Id_t, Tid_t, SessionKey_t).
+event SMDP_KEY(Id_t, Tid_t, SessionKey_t).
+
+
+(* ===== QUERIES ===== *)
+
+(* --- CRITICAL PROPERTIES --- *)
+
+(* #9: Mutual Authentication - eUICC authenticates SM-DP+ *)
+query dev:Id_t, tid:Tid_t, e:Nonce_t, s:Nonce_t;
+  inj-event(EUICC_AUTH_OK(dev, tid, e, s, ID_SMDP))
+    ==> inj-event(SMDP_SENT_AUTH(dev, tid, e, s, ID_SMDP)).
+
+(* #9: Mutual Authentication - SM-DP+ authenticates eUICC *)
+query dev:Id_t, tid:Tid_t, s:Nonce_t, transcript:bitstring;
+  inj-event(SMDP_AUTH_OK(dev, tid, s, ID_EUICC))
+    ==> inj-event(EUICC_SENT_FINISHED(dev, tid, transcript)).
+
+(* #3: Session Key Agreement - both parties derive same key *)
+query dev:Id_t, tid:Tid_t, k:SessionKey_t;
+  inj-event(SMDP_KEY(dev, tid, k)) ==> inj-event(EUICC_KEY(dev, tid, k)).
+
+(* #12: Session Key Secrecy - attacker cannot recover data protected by session key *)
+free secret_payload : bitstring [private].
+query attacker(secret_payload).
+
+(* #14: Forward Secrecy - session key remains secure after long-term key compromise *)
+query attacker(secret_payload) phase 1.
+
+(* --- IMPORTANT PROPERTIES --- *)
+
+(* #10: Injective Agreement - Finished message authenticity *)
+query dev:Id_t, tid:Tid_t, transcript:bitstring;
+  inj-event(SMDP_VERIFIED_FINISHED(dev, tid, transcript)) ==>
+    inj-event(EUICC_SENT_FINISHED(dev, tid, transcript)).
+
+query dev:Id_t, tid:Tid_t, transcript:bitstring;
+  inj-event(EUICC_VERIFIED_FINISHED(dev, tid, transcript)) ==>
+    inj-event(SMDP_SENT_FINISHED(dev, tid, transcript)).
+
+
+(* =====================================================================
+   eUICC PROCESS - Phase A Only
+   ===================================================================== *)
+let EUICC(PK_ROOT:PQSigPK_t, dev:Id_t) =
+  (* Setup: Long-term KEM identity *)
+  new SK_EUICC_KEM : KEMsk_t;
+  let PK_EUICC_KEM = kem_pk(SK_EUICC_KEM) in
+  
+  let CERT_EUICC = issue_pqc_cert(ID_EUICC, PK_EUICC_KEM, tag_eu) in
+  out(c, CERT_EUICC);
+
+  (* Ephemeral KEM keypair for Phase A *)
+  new SK_EUICC_EPH : KEMsk_t;
+  let PK_EUICC_EPH = kem_pk(SK_EUICC_EPH) in
+
+  (
+    (* Step 2: GetEUICCChallenge *)
+    in(LPA2EUICC, (=t_getChal, =ID_LPA, dev_in:Id_t));
+    if dev_in = dev then
+
+    new eChal : Nonce_t;
+
+    (* Step 3: Send challenge + ephemeral KEM pk + certificate *)
+    out(LPA2EUICC, (dev, eChal, PK_EUICC_EPH, CERT_EUICC));
+
+    (* Step 6: Receive KEM ciphertexts from SM-DP+ *)
+    in(LPA2EUICC,
+       (dev_in2     : Id_t,
+        tid         : Tid_t,
+        CT_EPH      : bitstring,
+        CT_CLIENT   : bitstring,
+        serverNonce : Nonce_t,
+        CERT_SMDP   : Cert_t));
+    if dev_in2 = dev then
+
+    (* Verify SM-DP+ certificate with PQ signature *)
+    let (=ID_SMDP, PK_SMDP_KEM:KEMpk_t, =tag_dp) = 
+      verify_pqc_cert(CERT_SMDP, PK_ROOT) in
+
+    (* KEM decapsulation *)
+    let SS_EPH = kem_dec(CT_EPH, SK_EUICC_EPH) in
+    let SS_CLIENT = kem_dec(CT_CLIENT, SK_EUICC_KEM) in
+
+    (* KEM encapsulation to server *)
+    new r_server : KEMcoin_t;
+    let CT_SERVER = kem_enc(PK_SMDP_KEM, r_server) in
+    let SS_SERVER = kem_ss(PK_SMDP_KEM, r_server) in
+
+    (* Derive session keys *)
+    let session_key = kemtls_kdf(SS_EPH, SS_SERVER, SS_CLIENT, 
+                                  eChal, serverNonce,
+                                  CT_EPH, CT_CLIENT, CT_SERVER,
+                                  CERT_EUICC, CERT_SMDP,
+                                  ID_EUICC, ID_SMDP) in
+    let KEK = get_KEK(session_key) in
+    let KM  = get_KM(session_key) in
+
+    (* Compute Finished message *)
+    let transcript = transcript_hash(eChal, serverNonce, CT_EPH, CT_CLIENT, 
+                                      CT_SERVER, CERT_EUICC, CERT_SMDP) in
+    let Finished_EU = kem_mac(KM, transcript) in
+    
+    event EUICC_SENT_FINISHED(dev, tid, transcript);
+    event EUICC_KEY(dev, tid, session_key);
+
+    (* Session key secrecy test: encrypt secret payload under session key *)
+    out(c, senc_test(secret_payload, session_key));
+
+    (* Step 7: Send CT_SERVER + Finished *)
+    out(LPA2EUICC, (dev, tid, CT_SERVER, Finished_EU));
+
+    (* Step 8: Receive and verify SM-DP+ Finished *)
+    in(LPA2EUICC, (dev_in3:Id_t, tid3:Tid_t, Finished_DP_in:bitstring));
+    if dev_in3 = dev then
+    if tid3 = tid then
+    
+    if Finished_DP_in = kem_mac(KM, (transcript, Finished_EU)) then
+    
+    event EUICC_VERIFIED_FINISHED(dev, tid, transcript);
+    event EUICC_AUTH_OK(dev, tid, eChal, serverNonce, ID_SMDP)
+  ).
+
+
+
+(* =====================================================================
+   SM-DP+ PROCESS - Phase A Only
+   ===================================================================== *)
+let SMDP(PK_ROOT:PQSigPK_t, dev:Id_t) =
+  let PK_SMDP_KEM = kem_pk(SK_SMDP_KEM) in
+  
+  let CERT_SMDP = issue_pqc_cert(ID_SMDP, PK_SMDP_KEM, tag_dp) in
+  out(c, CERT_SMDP);
+
+  (
+    (* Step 4: Receive from LPA *)
+    in(LPA2SMDP,
+       (devS        : Id_t,
+        eChalS      : Nonce_t,
+        PK_EUICC_EPH: KEMpk_t,
+        CERT_EUICC  : Cert_t));
+    if devS = dev then
+
+    (* Verify eUICC certificate with PQ signature *)
+    let (=ID_EUICC, PK_EUICC_KEM:KEMpk_t, =tag_eu) = 
+      verify_pqc_cert(CERT_EUICC, PK_ROOT) in
+
+    new tid : Tid_t;
+    new serverNonce : Nonce_t;
+    
+    event SMDP_BEGIN(devS, tid, eChalS, serverNonce);
+
+    (* KEM encapsulation *)
+    new r_eph : KEMcoin_t;
+    let CT_EPH = kem_enc(PK_EUICC_EPH, r_eph) in
+    let SS_EPH = kem_ss(PK_EUICC_EPH, r_eph) in
+
+    new r_client : KEMcoin_t;
+    let CT_CLIENT = kem_enc(PK_EUICC_KEM, r_client) in
+    let SS_CLIENT = kem_ss(PK_EUICC_KEM, r_client) in
+
+    event SMDP_SENT_AUTH(devS, tid, eChalS, serverNonce, ID_SMDP);
+
+    (* Step 5: Send ciphertexts to LPA *)
+    out(LPA2SMDP, (devS, tid, CT_EPH, CT_CLIENT, serverNonce, CERT_SMDP));
+
+    (* Step 7: Receive CT_SERVER + Finished from eUICC *)
+    in(LPA2SMDP, (devS2:Id_t, tid2:Tid_t, CT_SERVER:bitstring, Finished_EU_in:bitstring));
+    if devS2 = dev then
+    if tid2 = tid then
+
+    (* Decapsulate and derive keys *)
+    let SS_SERVER = kem_dec(CT_SERVER, SK_SMDP_KEM) in
+
+    let session_key = kemtls_kdf(SS_EPH, SS_SERVER, SS_CLIENT,
+                                  eChalS, serverNonce,
+                                  CT_EPH, CT_CLIENT, CT_SERVER,
+                                  CERT_EUICC, CERT_SMDP,
+                                  ID_EUICC, ID_SMDP) in
+    let KEK = get_KEK(session_key) in
+    let KM  = get_KM(session_key) in
+
+    (* Verify eUICC Finished *)
+    let transcript = transcript_hash(eChalS, serverNonce, CT_EPH, CT_CLIENT,
+                                      CT_SERVER, CERT_EUICC, CERT_SMDP) in
+    if Finished_EU_in = kem_mac(KM, transcript) then
+    
+    event SMDP_VERIFIED_FINISHED(dev, tid, transcript);
+    event SMDP_KEY(devS, tid, session_key);
+
+    (* Compute SM-DP+ Finished *)
+    let Finished_DP = kem_mac(KM, (transcript, Finished_EU_in)) in
+    event SMDP_SENT_FINISHED(dev, tid, transcript);
+
+    (* Step 8: Send Finished *)
+    out(LPA2SMDP, (devS, tid, Finished_DP));
+    
+    event SMDP_AUTH_OK(dev, tid, serverNonce, ID_EUICC)
+  ).
+
+
+
+(* =====================================================================
+   LPA PROCESS - Relay (Phase A Only)
+   ===================================================================== *)
+let LPA(dev:Id_t) =
+  (
+    (* Step 2: Send GetEUICCChallenge *)
+    out(LPA2EUICC, (t_getChal, ID_LPA, dev));
+
+    (* Step 3: Receive from eUICC *)
+    in(LPA2EUICC, (dev_ch:Id_t, eChal:Nonce_t, PK_EPH:KEMpk_t, CERT_EU:Cert_t));
+    if dev_ch = dev then
+
+    (* Step 4: Forward to SM-DP+ *)
+    out(LPA2SMDP, (dev, eChal, PK_EPH, CERT_EU));
+
+    (* Step 5: Receive from SM-DP+ *)
+    in(LPA2SMDP, (dev2:Id_t, tid:Tid_t, CT_EPH:bitstring, CT_CLIENT:bitstring, 
+                  serverNonce:Nonce_t, CERT_DP:Cert_t));
+    if dev2 = dev then
+
+    (* Step 6: Forward to eUICC *)
+    out(LPA2EUICC, (dev, tid, CT_EPH, CT_CLIENT, serverNonce, CERT_DP));
+
+    (* Step 7: Receive from eUICC *)
+    in(LPA2EUICC, (dev3:Id_t, tid2:Tid_t, CT_SERVER:bitstring, Finished_EU:bitstring));
+    if dev3 = dev then
+
+    out(LPA2SMDP, (dev, tid2, CT_SERVER, Finished_EU));
+
+    (* Step 8: Receive Finished from SM-DP+ *)
+    in(LPA2SMDP, (dev4:Id_t, tid3:Tid_t, Finished_DP:bitstring));
+    if dev4 = dev then
+
+    out(LPA2EUICC, (dev, tid3, Finished_DP))
+  ).
+
+
+
+(* =====================================================================
+   MAIN PROCESS
+   ===================================================================== *)
+process
+  let PK_ROOT = pq_sig_pk(SK_ROOT_CA) in
+  out(c, PK_ROOT);
+
+  new devMain : Id_t;
+  
+  (
+    ( !SMDP(PK_ROOT, devMain)
+    | !LPA(devMain)
+    | !EUICC(PK_ROOT, devMain)
+    )
+    
+    (* Forward Secrecy Test: leak long-term key after protocol *)
+  | ( phase 1;
+      out(c, SK_SMDP_KEM)
+    )
+  )
